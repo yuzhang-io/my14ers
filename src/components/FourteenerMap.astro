@@ -1,0 +1,864 @@
+---
+const {
+  coDataUrl = "/data/co-14ers.json",
+  mapId = "co14ersMap",
+} = Astro.props as {
+  coDataUrl?: string;
+  mapId?: string;
+};
+---
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+
+<style>
+  .leaflet-container {
+    background: transparent;
+    border-radius: 1rem;
+  }
+  .leaflet-tile.hillshade-tile {
+    mix-blend-mode: multiply;
+  }
+</style>
+
+<style is:global>
+  /* ===== Leaflet dark UI ===== */
+  .leaflet-container .leaflet-control {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .leaflet-control-zoom {
+    border: 1px solid rgba(255, 255, 255, 0.10) !important;
+    border-radius: 14px !important;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    background: rgba(0, 0, 0, 0.30) !important;
+  }
+
+  .leaflet-control-zoom a.leaflet-control-zoom-in,
+  .leaflet-control-zoom a.leaflet-control-zoom-out {
+    background: rgba(0, 0, 0, 0.35) !important;
+    color: rgba(244, 244, 245, 0.95) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+  }
+  .leaflet-control-zoom a.leaflet-control-zoom-out { border-bottom: none !important; }
+  .leaflet-control-zoom a:hover { background: rgba(255, 255, 255, 0.08) !important; }
+
+  .leaflet-control-attribution {
+    background: rgba(0, 0, 0, 0.28) !important;
+    color: rgba(244, 244, 245, 0.72) !important;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    border-radius: 12px;
+    padding: 3px 8px;
+    backdrop-filter: blur(10px);
+  }
+  .leaflet-control-attribution a { color: rgba(244, 244, 245, 0.85) !important; }
+
+  /* Reset control (dark) */
+  .leaflet-container .leaflet-control-reset a {
+    background: rgba(0, 0, 0, 0.35) !important;
+    color: rgba(244, 244, 245, 0.95) !important;
+    text-decoration: none !important;
+    font-size: 16px;
+    line-height: 26px;
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px;
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    backdrop-filter: blur(10px);
+  }
+  .leaflet-container .leaflet-control-reset a:hover { background: rgba(255,255,255,0.08) !important; }
+
+  /* ===== Numbered marker (DivIcon) ===== */
+  .num-marker {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    user-select: none;
+    box-sizing: border-box;
+    transform: translate3d(0,0,0);
+  }
+  .num-marker span { transform: translateY(-0.4px); }
+
+  /* Dark base */
+  .num-marker.dark.notyet {
+    color: rgba(244,244,245,0.92);
+    border: 1.4px solid rgba(226,232,240,0.80);
+    background: rgba(0,0,0,0.28);
+    opacity: 0.95;
+  }
+  .num-marker.dark.climbed {
+    color: rgba(0,0,0,0.92);
+    border: 1.4px solid rgba(255,255,255,0.95);
+    background: rgba(0,255,213,0.95);
+    box-shadow:
+      0 0 8px rgba(0, 255, 213, 0.50),
+      0 0 14px rgba(168, 85, 247, 0.16);
+  }
+
+  /* Light base */
+  .num-marker.light.notyet {
+    color: rgba(0,0,0,0.92);
+    border: 1.4px solid rgba(0,0,0,0.95);
+    background: rgba(0,0,0,0.10);
+    opacity: 0.9;
+  }
+  .num-marker.light.climbed {
+    color: rgba(255,255,255,0.92);
+    border: 1.4px solid rgba(0,0,0,0.95);
+    background: #0b3b2e;
+    box-shadow: 0 0 10px rgba(0,0,0,0.18);
+  }
+
+  .num-marker:hover {
+    cursor: pointer;
+    filter: drop-shadow(0 0 8px rgba(226,232,240,0.25));
+  }
+
+  /* Pin button icon */
+  .pin-btn svg {
+    width: 16px;
+    height: 16px;
+    opacity: 0.95;
+  }
+
+  /* ===== Two-line clamp for checklist peak names ===== */
+  .peak-name-2line {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    line-height: 1.15;
+  }
+</style>
+
+<section class="w-full overflow-x-hidden rounded-3xl border border-white/10 bg-black/15 p-5 shadow-sm backdrop-blur">
+  <div class="mb-4 grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-3 md:grid-cols-12 md:items-center">
+    <div class="md:col-span-4">
+      <div class="text-sm text-zinc-300">Check peaks in the checklist. Data stays in your browser.</div>
+      <span
+        id="coCountPill"
+        class="mt-2 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-zinc-200"
+      >
+        — / — climbed
+      </span>
+    </div>
+
+    <div class="md:col-span-8 flex flex-wrap items-center justify-start gap-2 md:justify-end">
+      <label class="text-xs text-zinc-300">Base</label>
+      <select
+        id="baseStyle"
+        class="rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none backdrop-blur hover:bg-black/30"
+      >
+        <option value="dark" selected>Dark (Neon Purple)</option>
+        <option value="light">Light (Relief)</option>
+      </select>
+
+      <input
+        id="peakSearch"
+        type="search"
+        placeholder="Search peaks…"
+        class="w-64 max-w-full rounded-2xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-500 backdrop-blur focus:border-white/20"
+      />
+
+      <button
+        id="exportBtn"
+        class="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-100 backdrop-blur hover:bg-white/10 hover:border-white/20"
+      >
+        Export JSON
+      </button>
+
+      <label
+        class="cursor-pointer rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-zinc-100 backdrop-blur hover:bg-white/10 hover:border-white/20"
+      >
+        Import JSON
+        <input id="importFile" type="file" accept="application/json" class="hidden" />
+      </label>
+
+      <button
+        id="clearBtn"
+        class="rounded-2xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-100 backdrop-blur hover:bg-black/30 hover:border-white/20"
+      >
+        Clear all
+      </button>
+    </div>
+  </div>
+
+  <div class="w-full min-w-0 rounded-2xl border border-white/10 bg-black/20 p-3">
+    <div class="flex items-center justify-between">
+      <h2 class="text-sm font-semibold text-zinc-100">Colorado 14ers</h2>
+      <div id="statusText" class="text-xs text-zinc-400">Loading…</div>
+    </div>
+
+    <div class="mt-3 overflow-hidden rounded-2xl ring-1 ring-white/10">
+      <div class="mx-auto w-full max-w-[680px]">
+        <div id={mapId} class="relative w-full" style="aspect-ratio: 1 / 1; min-height: 320px;"></div>
+      </div>
+    </div>
+
+    <div class="mt-4 w-full min-w-0 rounded-2xl border border-white/10 bg-black/10 p-4 overflow-x-hidden">
+      <div class="mb-3 flex items-center justify-between">
+        <div class="text-sm font-semibold text-zinc-100">Checklist</div>
+        <div class="text-xs text-zinc-500">Front+Sangre · Mosquito+Sawatch · Elk+San Juan</div>
+      </div>
+
+      <!-- ✅ SAFE RESPONSIVE GRID (no overflow) -->
+      <div class="grid w-full min-w-0 gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 items-start">
+        <div id="range_frontsangre" class="min-w-0 w-full rounded-2xl border border-white/10 bg-black/15 p-3"></div>
+        <div id="range_mosquitosawatch" class="min-w-0 w-full rounded-2xl border border-white/10 bg-black/15 p-3"></div>
+        <div id="range_elksanjuan" class="min-w-0 w-full rounded-2xl border border-white/10 bg-black/15 p-3"></div>
+      </div>
+
+      <div class="mt-3 text-xs text-zinc-500">
+        Click a row to toggle climbed. Use the pin button to jump to a peak.
+      </div>
+    </div>
+  </div>
+
+  <script is:inline define:vars={{ coDataUrl, mapId }}>
+    (function () {
+      var CO_URL = coDataUrl;
+      var MAP_ID = mapId;
+
+      var STORAGE_KEY = "my14ers_state_v1";
+      var currentBase = "dark";
+
+      function $(id) { return document.getElementById(id); }
+
+      function normalize(s) {
+        s = (s || "").toLowerCase();
+        s = s.replace(/mount\s+/g, "mt ");
+        s = s.replace(/\bmt\.\s*/g, "mt ");
+        s = s.replace(/[()]/g, " ");
+        s = s.replace(/[^a-z0-9\s]/g, "");
+        s = s.replace(/\s+/g, " ").trim();
+        return s;
+      }
+
+      function loadState() {
+        try {
+          var raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return { climbed: {} };
+          var obj = JSON.parse(raw);
+          if (!obj || typeof obj !== "object") return { climbed: {} };
+          if (!obj.climbed || typeof obj.climbed !== "object") obj.climbed = {};
+          return obj;
+        } catch (e) {
+          return { climbed: {} };
+        }
+      }
+
+      function saveState(state) { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+      function setStatus(msg) {
+        var el = $("statusText");
+        if (el) el.textContent = msg || "";
+      }
+
+      function setCount(done, total) {
+        var pill = $("coCountPill");
+        if (pill) pill.textContent = done + " / " + total + " climbed";
+      }
+
+      function columnGroupForRange(range) {
+        var r = (range || "").toLowerCase();
+
+        if (r.indexOf("front") !== -1) return "frontsangre";
+        if (r.indexOf("sangre") !== -1) return "frontsangre";
+
+        if (r.indexOf("mosquito") !== -1) return "mosquitosawatch";
+        if (r.indexOf("sawatch") !== -1) return "mosquitosawatch";
+
+        if (r.indexOf("elk") !== -1) return "elksanjuan";
+        if (r.indexOf("san juan") !== -1) return "elksanjuan";
+
+        return "mosquitosawatch";
+      }
+
+      function rangeTitle(range) { return range || "Unknown Range"; }
+
+      function rangeSortKey(range) {
+        var r = (range || "").toLowerCase();
+
+        if (r.indexOf("front") !== -1) return 1;
+        if (r.indexOf("sangre") !== -1) return 2;
+
+        if (r.indexOf("mosquito") !== -1) return 1;
+        if (r.indexOf("sawatch") !== -1) return 2;
+
+        if (r.indexOf("elk") !== -1) return 1;
+        if (r.indexOf("san juan") !== -1) return 2;
+
+        return 99;
+      }
+
+      function markerIcon(number, climbed) {
+        var base = (currentBase === "light") ? "light" : "dark";
+        var state = climbed ? "climbed" : "notyet";
+        var html = '<div class="num-marker ' + base + " " + state + '"><span>' + number + "</span></div>";
+        return window.L.divIcon({
+          className: "",
+          html: html,
+          iconSize: [20, 20],
+          iconAnchor: [10, 10],
+        });
+      }
+
+      function makeSpiderEngine(map) {
+        var linesLayer = window.L.layerGroup().addTo(map);
+
+        function lineColor() {
+          return (currentBase === "light") ? "rgba(0,0,0,0.55)" : "rgba(255,255,255,0.35)";
+        }
+
+        function connectedComponents(nodes, minDist) {
+          var n = nodes.length;
+          var parent = new Array(n);
+          for (var i = 0; i < n; i++) parent[i] = i;
+
+          function find(x) {
+            while (parent[x] !== x) {
+              parent[x] = parent[parent[x]];
+              x = parent[x];
+            }
+            return x;
+          }
+          function union(a, b) {
+            var ra = find(a), rb = find(b);
+            if (ra !== rb) parent[rb] = ra;
+          }
+
+          var min2 = minDist * minDist;
+          for (var a = 0; a < n; a++) {
+            for (var b = a + 1; b < n; b++) {
+              var dx = nodes[b].p.x - nodes[a].p.x;
+              var dy = nodes[b].p.y - nodes[a].p.y;
+              if (dx * dx + dy * dy < min2) union(a, b);
+            }
+          }
+
+          var groups = {};
+          for (var k = 0; k < n; k++) {
+            var r = find(k);
+            if (!groups[r]) groups[r] = [];
+            groups[r].push(nodes[k]);
+          }
+          return Object.values(groups);
+        }
+
+        function update(markers) {
+          if (!markers || !markers.length) return;
+          linesLayer.clearLayers();
+
+          var pts = [];
+          for (var i = 0; i < markers.length; i++) {
+            var mk = markers[i];
+            if (!mk || !mk.__origLatLng) continue;
+
+            var ll = mk.__origLatLng;
+            if (!map.getBounds().pad(0.10).contains(ll)) {
+              mk.setLatLng(ll);
+              continue;
+            }
+
+            var p = map.latLngToLayerPoint(ll);
+            pts.push({
+              mk: mk,
+              orig: ll,
+              p: p,
+              x: p.x, y: p.y,
+              ox: p.x, oy: p.y,
+            });
+          }
+
+          if (!pts.length) return;
+
+          var minDist = 20;
+          var comps = connectedComponents(pts, minDist);
+
+          for (var c = 0; c < comps.length; c++) {
+            var comp = comps[c];
+            if (comp.length <= 1) {
+              comp[0].mk.setLatLng(comp[0].orig);
+              continue;
+            }
+
+            var ITER = 22;
+            var spring = 0.10;
+            var repel = 0.60;
+            var maxDisp = 34;
+            var min2 = minDist * minDist;
+
+            for (var ii = 0; ii < comp.length; ii++) {
+              comp[ii].x = comp[ii].ox;
+              comp[ii].y = comp[ii].oy;
+            }
+
+            for (var it = 0; it < ITER; it++) {
+              for (var s = 0; s < comp.length; s++) {
+                comp[s].x += (comp[s].ox - comp[s].x) * spring;
+                comp[s].y += (comp[s].oy - comp[s].y) * spring;
+              }
+
+              for (var a = 0; a < comp.length; a++) {
+                for (var b = a + 1; b < comp.length; b++) {
+                  var dx = comp[b].x - comp[a].x;
+                  var dy = comp[b].y - comp[a].y;
+                  var d2 = dx * dx + dy * dy;
+
+                  if (d2 < 0.0001) {
+                    dx = (Math.random() - 0.5) * 0.2;
+                    dy = (Math.random() - 0.5) * 0.2;
+                    d2 = dx * dx + dy * dy;
+                  }
+
+                  if (d2 < min2) {
+                    var d = Math.sqrt(d2);
+                    var push = (minDist - d) * repel;
+                    var ux = dx / d;
+                    var uy = dy / d;
+
+                    comp[a].x -= ux * push * 0.5;
+                    comp[a].y -= uy * push * 0.5;
+                    comp[b].x += ux * push * 0.5;
+                    comp[b].y += uy * push * 0.5;
+                  }
+                }
+              }
+
+              for (var k = 0; k < comp.length; k++) {
+                var ddx = comp[k].x - comp[k].ox;
+                var ddy = comp[k].y - comp[k].oy;
+                var dist = Math.sqrt(ddx * ddx + ddy * ddy);
+                if (dist > maxDisp) {
+                  comp[k].x = comp[k].ox + (ddx / dist) * maxDisp;
+                  comp[k].y = comp[k].oy + (ddy / dist) * maxDisp;
+                }
+              }
+            }
+
+            for (var pIdx = 0; pIdx < comp.length; pIdx++) {
+              var newP = window.L.point(comp[pIdx].x, comp[pIdx].y);
+              var newLL = map.layerPointToLatLng(newP);
+
+              comp[pIdx].mk.setLatLng(newLL);
+
+              window.L.polyline([comp[pIdx].orig, newLL], {
+                color: lineColor(),
+                weight: 1,
+                opacity: 1,
+                interactive: false,
+              }).addTo(linesLayer);
+            }
+          }
+        }
+
+        return { update: update };
+      }
+
+      window.addEventListener("load", function () {
+        if (!window.L) return setStatus("Leaflet failed to load.");
+        setStatus("Loading peaks…");
+
+        fetch(CO_URL, { cache: "no-store" })
+          .then(function (r) { return r.json(); })
+          .then(function (coJson) {
+            var coPeaks = (coJson && Array.isArray(coJson.peaks)) ? coJson.peaks : [];
+            var state = loadState();
+
+            var map = window.L.map(MAP_ID, {
+              scrollWheelZoom: true,
+              renderer: window.L.svg(),
+            });
+
+            var MAPBOX_TOKEN = "pk.eyJ1Ijoiemhhbmd5dXR5biIsImEiOiJjbWplcjhmMHIwa2psM2tweTFyaTl3aWVmIn0.zCJY08mlW89VE-CNDsUaOg";
+            var mapboxStyleTiles =
+              "https://api.mapbox.com/styles/v1/zhangyutyn/cmjeroj9p001x01s1g91zapo2/tiles/256/{z}/{x}/{y}@2x?access_token=" +
+              MAPBOX_TOKEN;
+
+            var dark = window.L.tileLayer(mapboxStyleTiles, {
+              maxZoom: 20,
+              tileSize: 256,
+              zoomOffset: 0,
+              attribution: "&copy; Mapbox",
+            });
+
+            var relief = window.L.tileLayer(
+              "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",
+              { maxZoom: 13, attribution: "Tiles &copy; Esri" }
+            );
+
+            var hillshade = window.L.tileLayer(
+              "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
+              { maxZoom: 16, opacity: 0.35, className: "hillshade-tile", attribution: "Tiles &copy; Esri" }
+            );
+
+            var lightLabels = window.L.tileLayer(
+              "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Terrain_Reference/MapServer/tile/{z}/{y}/{x}",
+              { maxZoom: 13, opacity: 0.55, attribution: "Tiles &copy; Esri" }
+            );
+
+            dark.addTo(map);
+
+            var home = { center: null, zoom: null, ready: false };
+            function captureHomeFinal() {
+              if (home.ready) return;
+              requestAnimationFrame(function () {
+                home.center = map.getCenter();
+                home.zoom = map.getZoom();
+                home.ready = true;
+              });
+            }
+
+            var ResetControl = window.L.Control.extend({
+              options: { position: "topleft" },
+              onAdd: function () {
+                var container = window.L.DomUtil.create("div", "leaflet-control leaflet-control-reset");
+                var a = window.L.DomUtil.create("a", "", container);
+                a.href = "#";
+                a.title = "Reset view";
+                a.setAttribute("role", "button");
+                a.setAttribute("aria-label", "Reset view");
+                a.innerHTML = "⟳";
+
+                window.L.DomEvent.disableClickPropagation(container);
+                window.L.DomEvent.on(a, "click", function (e) {
+                  window.L.DomEvent.preventDefault(e);
+                  if (!home.ready) captureHomeFinal();
+                  if (home.center && typeof home.zoom === "number") {
+                    map.setView(home.center, home.zoom, { animate: true });
+                  }
+                });
+                return container;
+              }
+            });
+            map.addControl(new ResetControl());
+
+            var markerById = {};
+            var allMarkers = [];
+            var listData = [];
+            var bounds = [];
+
+            function keyFor(pk) { return pk && (pk.id ? String(pk.id) : normalize(pk.name)); }
+            function isClimbed(pk) { var k = keyFor(pk); return !!(k && state.climbed[k]); }
+            function setClimbed(pk, climbed) {
+              var k = keyFor(pk);
+              if (!k) return;
+              if (climbed) state.climbed[k] = true;
+              else delete state.climbed[k];
+              saveState(state);
+            }
+
+            for (var i = 0; i < coPeaks.length; i++) {
+              var pk = coPeaks[i];
+              if (!pk || typeof pk.lat !== "number" || typeof pk.lon !== "number") continue;
+
+              var idKey = keyFor(pk);
+              var climbed = isClimbed(pk);
+
+              listData.push({
+                idKey: idKey,
+                pk: pk,
+                name: pk.name || "Unknown",
+                range: pk.range || "Unknown Range",
+                elevation_ft: (typeof pk.elevation_ft === "number" ? pk.elevation_ft : 0),
+                climbed: climbed,
+                lat: pk.lat,
+                lon: pk.lon,
+                number: 0,
+              });
+
+              bounds.push([pk.lat, pk.lon]);
+            }
+
+            function assignNumbersLeftToRight() {
+              function groupRank(range) {
+                var g = columnGroupForRange(range);
+                if (g === "frontsangre") return 1;
+                if (g === "mosquitosawatch") return 2;
+                if (g === "elksanjuan") return 3;
+                return 9;
+              }
+
+              var copy = listData.slice();
+              copy.sort(function (a, b) {
+                var ga = groupRank(a.range), gb = groupRank(b.range);
+                if (ga !== gb) return ga - gb;
+                if (a.lon !== b.lon) return a.lon - b.lon;
+                if (a.lat !== b.lat) return b.lat - a.lat;
+                return a.name.localeCompare(b.name);
+              });
+
+              for (var i = 0; i < copy.length; i++) copy[i].number = i + 1;
+            }
+
+            assignNumbersLeftToRight();
+
+            function buildOrUpdateMarker(it) {
+              var mk = markerById[it.idKey];
+              var icon = markerIcon(it.number, it.climbed);
+
+              if (!mk) {
+                mk = window.L.marker([it.lat, it.lon], { icon: icon }).addTo(map);
+                mk.__origLatLng = window.L.latLng([it.lat, it.lon]);
+                markerById[it.idKey] = mk;
+                allMarkers.push(mk);
+
+                var elev = it.pk.elevation_ft ? ("<br/>" + it.pk.elevation_ft + " ft") : "";
+                var rng = it.pk.range ? ("<br/>" + it.pk.range) : "";
+                mk.bindPopup("<b>" + it.number + ". " + it.name + "</b>" + elev + rng);
+              } else {
+                mk.setIcon(icon);
+              }
+            }
+
+            for (var m = 0; m < listData.length; m++) buildOrUpdateMarker(listData[m]);
+
+            if (bounds.length) {
+              var b = window.L.latLngBounds(bounds);
+              map.fitBounds(b, { padding: [18, 18], maxZoom: 8 });
+              var z = map.getZoom();
+              map.setZoom(Math.min(z, 10));
+              map.once("moveend", captureHomeFinal);
+              dark.once("load", captureHomeFinal);
+            } else {
+              map.setView([39.0, -105.7], 8);
+              map.once("moveend", captureHomeFinal);
+              dark.once("load", captureHomeFinal);
+            }
+
+            var spider = makeSpiderEngine(map);
+            function refreshSpider() { spider.update(allMarkers); }
+            map.on("zoomend moveend", refreshSpider);
+
+            function setBase(mode) {
+              currentBase = mode;
+
+              if (map.hasLayer(dark)) map.removeLayer(dark);
+              if (map.hasLayer(relief)) map.removeLayer(relief);
+              if (map.hasLayer(hillshade)) map.removeLayer(hillshade);
+              if (map.hasLayer(lightLabels)) map.removeLayer(lightLabels);
+
+              if (mode === "light") {
+                relief.addTo(map);
+                hillshade.addTo(map);
+                lightLabels.addTo(map);
+              } else {
+                dark.addTo(map);
+              }
+
+              for (var i = 0; i < listData.length; i++) buildOrUpdateMarker(listData[i]);
+              refreshSpider();
+            }
+
+            var baseSel = $("baseStyle");
+            if (baseSel) baseSel.addEventListener("change", function () { setBase(baseSel.value); });
+
+            function updateCounts() {
+              var total = listData.length;
+              var done = 0;
+              for (var i = 0; i < listData.length; i++) if (listData[i].climbed) done++;
+              setCount(done, total);
+            }
+
+            function renderChecklist(filterText) {
+              var q = (filterText || "").toLowerCase().trim();
+              var byRange = {};
+
+              for (var j = 0; j < listData.length; j++) {
+                var it = listData[j];
+                if (q && it.name.toLowerCase().indexOf(q) === -1) continue;
+                var r = it.range || "Unknown Range";
+                if (!byRange[r]) byRange[r] = [];
+                byRange[r].push(it);
+              }
+
+              Object.keys(byRange).forEach(function (r) {
+                byRange[r].sort(function (a, b) { return a.number - b.number; });
+              });
+
+              var col = {
+                frontsangre: $("range_frontsangre"),
+                mosquitosawatch: $("range_mosquitosawatch"),
+                elksanjuan: $("range_elksanjuan"),
+              };
+              col.frontsangre.innerHTML = "";
+              col.mosquitosawatch.innerHTML = "";
+              col.elksanjuan.innerHTML = "";
+
+              var ranges = Object.keys(byRange).sort(function (a, b) {
+                var ga = columnGroupForRange(a);
+                var gb = columnGroupForRange(b);
+                if (ga !== gb) return ga.localeCompare(gb);
+                return rangeSortKey(a) - rangeSortKey(b);
+              });
+
+              var pinSvg =
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                  '<path d="M12 21s7-4.5 7-11a7 7 0 1 0-14 0c0 6.5 7 11 7 11z"></path>' +
+                  '<circle cx="12" cy="10" r="2.5"></circle>' +
+                '</svg>';
+
+              function escAttr(s) {
+                return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+              }
+
+              function rangeCardHtml(rangeName, items) {
+                var header =
+                  '<div class="mb-2 flex items-center justify-between">' +
+                    '<div class="text-sm font-semibold text-zinc-100">' + rangeTitle(rangeName) + '</div>' +
+                    '<div class="text-xs text-zinc-500">' + items.length + ' peaks</div>' +
+                  '</div>';
+
+                var rows = '<div class="grid gap-2">';
+                for (var k = 0; k < items.length; k++) {
+                  var it = items[k];
+                  var checked = it.climbed;
+
+                  var numPill =
+                    '<span class="inline-flex h-7 min-w-[28px] items-center justify-center rounded-full ring-1 px-2 text-[11px] font-semibold tabular-nums ' +
+                      (checked
+                        ? 'bg-emerald-500/15 text-emerald-200 ring-emerald-400/30'
+                        : 'bg-white/5 text-zinc-200 ring-white/10') +
+                    '">' + it.number + "</span>";
+
+                  rows +=
+                    '<div data-id="' + it.idKey + '" class="peak-row group flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 px-3 py-2 hover:bg-white/5">' +
+                      numPill +
+                      '<div class="min-w-0 flex-1">' +
+                        '<div class="peak-name-2line text-sm text-zinc-100" title="' + escAttr(it.name) + '">' + escAttr(it.name) + '</div>' +
+                      '</div>' +
+                      '<div class="text-[11px] text-zinc-400 tabular-nums">' + (it.elevation_ft ? (it.elevation_ft + " ft") : "") + '</div>' +
+                      '<button data-fly="' + it.idKey + '" class="pin-btn ml-2 grid h-8 w-8 place-items-center rounded-xl border border-white/10 bg-white/5 text-zinc-100 hover:bg-white/10" aria-label="Fly to peak">' +
+                        pinSvg +
+                      '</button>' +
+                    '</div>';
+                }
+                rows += "</div>";
+
+                return '<div class="rounded-2xl border border-white/10 bg-black/10 p-3 w-full min-w-0 overflow-hidden">' + header + rows + "</div>";
+              }
+
+              for (var rIdx = 0; rIdx < ranges.length; rIdx++) {
+                var rname = ranges[rIdx];
+                var items = byRange[rname];
+                var group = columnGroupForRange(rname);
+                if (!col[group]) continue;
+                col[group].insertAdjacentHTML("beforeend", rangeCardHtml(rname, items));
+              }
+
+              updateCounts();
+            }
+
+            document.body.addEventListener("click", function (e) {
+              var t = e.target;
+
+              var flyBtn = t && t.closest ? t.closest("button[data-fly]") : null;
+              if (flyBtn) {
+                e.preventDefault();
+                e.stopPropagation();
+                var id = flyBtn.getAttribute("data-fly");
+                var it = null;
+                for (var i = 0; i < listData.length; i++) {
+                  if (listData[i].idKey === id) { it = listData[i]; break; }
+                }
+                if (!it) return;
+                map.flyTo([it.lat, it.lon], Math.max(map.getZoom(), 10), { duration: 0.8 });
+                var mk = markerById[it.idKey];
+                if (mk) mk.openPopup();
+                return;
+              }
+
+              var row = t && t.closest ? t.closest(".peak-row") : null;
+              if (!row) return;
+
+              var rid = row.getAttribute("data-id");
+              if (!rid) return;
+
+              var item = null;
+              for (var j = 0; j < listData.length; j++) {
+                if (listData[j].idKey === rid) { item = listData[j]; break; }
+              }
+              if (!item) return;
+
+              item.climbed = !item.climbed;
+              setClimbed(item.pk, item.climbed);
+              buildOrUpdateMarker(item);
+
+              renderChecklist($("peakSearch").value);
+              refreshSpider();
+            });
+
+            var searchEl = $("peakSearch");
+            if (searchEl) searchEl.addEventListener("input", function () { renderChecklist(searchEl.value); });
+
+            $("exportBtn").addEventListener("click", function () {
+              var payload = { climbed: state.climbed };
+              var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+              var url = URL.createObjectURL(blob);
+              var a = document.createElement("a");
+              a.href = url;
+              a.download = "my14ers.json";
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+              URL.revokeObjectURL(url);
+            });
+
+            $("importFile").addEventListener("change", function (ev) {
+              var file = ev.target.files && ev.target.files[0];
+              if (!file) return;
+              var reader = new FileReader();
+              reader.onload = function () {
+                try {
+                  var obj = JSON.parse(String(reader.result || "{}"));
+                  if (obj && obj.climbed && typeof obj.climbed === "object") {
+                    state.climbed = obj.climbed;
+                    saveState(state);
+
+                    for (var i = 0; i < listData.length; i++) {
+                      listData[i].climbed = !!state.climbed[listData[i].idKey];
+                      buildOrUpdateMarker(listData[i]);
+                    }
+                    renderChecklist($("peakSearch").value);
+                    refreshSpider();
+                  }
+                } catch (e) {}
+              };
+              reader.readAsText(file);
+              ev.target.value = "";
+            });
+
+            $("clearBtn").addEventListener("click", function () {
+              state.climbed = {};
+              saveState(state);
+
+              for (var i = 0; i < listData.length; i++) {
+                listData[i].climbed = false;
+                buildOrUpdateMarker(listData[i]);
+              }
+              renderChecklist($("peakSearch").value);
+              refreshSpider();
+            });
+
+            setBase("dark");
+            renderChecklist("");
+            refreshSpider();
+            setStatus("Ready");
+          })
+          .catch(function (err) {
+            console.error(err);
+            setStatus("Failed to load peaks.");
+          });
+      });
+    })();
+  </script>
+</section>

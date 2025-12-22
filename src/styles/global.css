@@ -1,1 +1,137 @@
 @import "tailwindcss";
+
+/* Background drift */
+@keyframes drift {
+  0% { transform: translate3d(0,0,0) scale(1); opacity: .9; }
+  50% { transform: translate3d(-1%,1%,0) scale(1.02); opacity: 1; }
+  100% { transform: translate3d(0,0,0) scale(1); opacity: .9; }
+}
+.bg-drift { animation: drift 12s ease-in-out infinite; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white !important; }
+}
+
+/* Hillshade blend */
+.leaflet-tile.hillshade-tile { mix-blend-mode: multiply; }
+
+/* ====== Markers (more obvious) ====== */
+.peak-dot-wrap { background: transparent !important; border: 0 !important; }
+.peak-dot {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  transform: translateZ(0);
+  transition: transform 140ms ease, filter 140ms ease, opacity 140ms ease;
+}
+
+.peak-dot--todo {
+  background: rgba(0,0,0,0.10);
+  border: 2px solid rgba(226,232,240,0.65);
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.12),
+    0 0 14px rgba(168,85,247,0.12);
+  opacity: 0.9;
+}
+
+.peak-dot--climbed {
+  background: rgba(0,199,168,0.95);
+  border: 2px solid rgba(255,255,255,0.95);
+  box-shadow:
+    0 0 0 1px rgba(0,255,213,0.14),
+    0 0 18px rgba(0,255,213,0.55),
+    0 0 26px rgba(168,85,247,0.22);
+}
+
+.leaflet-marker-icon:hover .peak-dot {
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 10px rgba(244,244,245,0.28));
+}
+
+/* ====== Tooltip labels used for spider mode ====== */
+.spider-label {
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(10,10,12,0.40);
+  color: rgba(244,244,245,0.96);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  backdrop-filter: blur(12px);
+  padding: 6px 10px;
+  font-weight: 600;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 10px 30px rgba(0,0,0,0.25);
+  pointer-events: none;
+}
+.spider-label.climbed {
+  border-color: rgba(0,255,213,0.28);
+  box-shadow:
+    0 0 0 1px rgba(0,255,213,0.12),
+    0 0 22px rgba(0,255,213,0.18),
+    0 0 18px rgba(168,85,247,0.14);
+}
+
+/* ====== Checklist check style (prettier than default checkbox) ====== */
+.peak-check {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgba(226,232,240,0.6);
+  background: transparent;
+}
+.peak-check--on {
+  border-color: rgba(0,255,213,0.45);
+  background: radial-gradient(circle at 30% 30%, rgba(0,255,213,0.85), rgba(0,199,168,0.35));
+  box-shadow: 0 0 16px rgba(0,255,213,0.25);
+}
+.peak-check--off {
+  opacity: 0.85;
+}
+
+/* ====== Leaflet dark controls ====== */
+.leaflet-container .leaflet-control {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.leaflet-control-zoom {
+  border: 1px solid rgba(63, 63, 70, 0.6) !important;
+  border-radius: 12px !important;
+  overflow: hidden;
+  box-shadow: none !important;
+  backdrop-filter: blur(10px);
+  background: rgba(9, 9, 11, 0.55) !important;
+}
+.leaflet-control-zoom a {
+  background: rgba(9, 9, 11, 0.65) !important;
+  color: rgba(244, 244, 245, 0.95) !important;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.6) !important;
+}
+.leaflet-control-zoom a:last-child { border-bottom: none !important; }
+.leaflet-control-zoom a:hover { background: rgba(255, 255, 255, 0.08) !important; }
+
+/* Reset button (dark theme) */
+.leaflet-container .leaflet-control-reset a {
+  background: rgba(9, 9, 11, 0.65) !important;
+  color: rgba(244, 244, 245, 0.95) !important;
+  text-decoration: none !important;
+  font-size: 16px;
+  line-height: 26px;
+}
+.leaflet-container .leaflet-control-reset a:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.leaflet-control-attribution {
+  background: rgba(9, 9, 11, 0.55) !important;
+  color: rgba(244, 244, 245, 0.75) !important;
+  border: 1px solid rgba(63, 63, 70, 0.5);
+  border-radius: 10px;
+  padding: 3px 8px;
+  backdrop-filter: blur(10px);
+}
+.leaflet-control-attribution a { color: rgba(244, 244, 245, 0.85) !important; }

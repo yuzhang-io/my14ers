@@ -1,0 +1,614 @@
+---
+import "../styles/global.css";
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>my14ers — snapshot</title>
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer></script>
+  </head>
+
+  <body class="min-h-screen bg-zinc-950 text-zinc-100">
+    <!-- background -->
+    <div class="pointer-events-none fixed inset-0 -z-10">
+      <div class="bg-drift absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(168,85,247,0.28),transparent_42%),radial-gradient(circle_at_80%_30%,rgba(34,211,238,0.18),transparent_48%),radial-gradient(circle_at_50%_90%,rgba(16,185,129,0.12),transparent_55%)]"></div>
+      <div class="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:48px_48px]"></div>
+      <div class="absolute inset-0 bg-gradient-to-b from-transparent via-zinc-950/20 to-zinc-950"></div>
+    </div>
+
+    <main class="mx-auto max-w-6xl px-6 py-8">
+      <div class="flex items-center justify-between gap-3">
+        <a href="/" class="text-sm text-zinc-300 hover:text-white">← Back</a>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-1 backdrop-blur">
+            <button
+              id="modeCount"
+              class="snap-mode-btn rounded-xl px-3 py-2 text-xs text-zinc-100 hover:bg-white/10"
+              aria-pressed="true"
+            >
+              Count
+            </button>
+            <button
+              id="modeMini"
+              class="snap-mode-btn rounded-xl px-3 py-2 text-xs text-zinc-100 hover:bg-white/10"
+              aria-pressed="false"
+            >
+              Checklist
+            </button>
+            <button
+              id="modeHide"
+              class="snap-mode-btn rounded-xl px-3 py-2 text-xs text-zinc-100 hover:bg-white/10"
+              aria-pressed="false"
+            >
+              Hide
+            </button>
+          </div>
+
+          <button
+            id="exportPngBtn"
+            class="rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-xs text-zinc-100 backdrop-blur hover:bg-white/10 hover:border-white/20"
+          >
+            Export PNG (HQ)
+          </button>
+        </div>
+      </div>
+
+      <!-- poster -->
+      <section
+        id="poster"
+        class="mt-4 rounded-[28px] border border-white/10 bg-white/5 p-6 shadow-[0_0_0_1px_rgba(255,255,255,0.04)] backdrop-blur-xl"
+      >
+        <div class="flex items-end justify-between gap-4">
+          <div>
+            <h1 class="text-2xl font-semibold tracking-tight">
+              <span class="bg-gradient-to-r from-fuchsia-400 via-violet-300 to-cyan-300 bg-clip-text text-transparent">
+                Colorado 14ers
+              </span>
+            </h1>
+            <div class="mt-1 text-sm text-zinc-400">
+              Generated on <span id="genDate"></span>
+            </div>
+          </div>
+
+          <div class="text-right">
+            <div
+              id="pill"
+              class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-200"
+            >
+              — / — climbed
+            </div>
+          </div>
+        </div>
+
+        <!-- big map -->
+        <div class="mt-5">
+          <div class="relative overflow-hidden rounded-2xl ring-1 ring-white/10">
+            <div id="snapMapWrap" class="relative w-full" style="aspect-ratio: 16 / 10; min-height: 420px;">
+              <div id="snapMap" class="absolute inset-0"></div>
+
+              <!-- subtle vignette -->
+              <div class="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_40%,rgba(0,0,0,0.35)_100%)]"></div>
+
+              <!-- status -->
+              <div
+                id="snapStatus"
+                class="pointer-events-none absolute bottom-3 left-3 rounded-xl border border-white/10 bg-black/35 px-3 py-1 text-xs text-zinc-100 backdrop-blur"
+              >
+                Loading…
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- mini checklist -->
+        <div id="miniWrap" class="mt-4 hidden">
+          <div class="rounded-2xl border border-white/10 bg-black/10 p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <div class="text-sm font-semibold text-zinc-100">Checklist</div>
+              <div class="text-xs text-zinc-500">1–58</div>
+            </div>
+
+            <!-- 4 columns -->
+            <div id="miniGrid" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4"></div>
+
+            <div class="mt-3 text-[11px] text-zinc-500">
+              Filled = climbed • Outline = not yet
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <style is:global>
+        /* ===== Leaflet base ===== */
+        .leaflet-container { background: transparent; border-radius: 1rem; }
+
+        /* Hide ALL leaflet controls (framable) */
+        .leaflet-control-container { display: none !important; }
+
+        /* ===== Numbered marker (same as checklist page) ===== */
+        .num-marker {
+          width: 22px;
+          height: 22px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-size: 10px;
+          font-weight: 750;
+          letter-spacing: -0.02em;
+          user-select: none;
+          box-sizing: border-box;
+          transform: translate3d(0,0,0);
+        }
+        .num-marker span { transform: translateY(-0.4px); }
+
+        .num-marker.dark.notyet {
+          color: rgba(244,244,245,0.92);
+          border: 1.4px solid rgba(226,232,240,0.80);
+          background: rgba(0,0,0,0.28);
+          opacity: 0.95;
+        }
+        .num-marker.dark.climbed {
+          color: rgba(0,0,0,0.92);
+          border: 1.4px solid rgba(255,255,255,0.95);
+          background: rgba(0,255,213,0.95);
+          box-shadow:
+            0 0 8px rgba(0, 255, 213, 0.50),
+            0 0 14px rgba(168, 85, 247, 0.16);
+        }
+
+        /* ===== mini checklist rows ===== */
+        .mini-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          border-radius: 14px;
+          border: 1px solid rgba(255,255,255,0.10);
+          background: rgba(0,0,0,0.18);
+          padding: 8px 10px;
+          overflow: hidden;
+        }
+        .mini-num {
+          width: 28px;
+          height: 28px;
+          border-radius: 999px;
+          display: grid;
+          place-items: center;
+          font-size: 12px;
+          font-weight: 750;
+          letter-spacing: -0.02em;
+          border: 1px solid rgba(226,232,240,0.70);
+          background: rgba(0,0,0,0.28);
+          color: rgba(244,244,245,0.92);
+          flex: 0 0 auto;
+        }
+        .mini-num.climbed {
+          background: rgba(0,255,213,0.22);
+          border-color: rgba(0,255,213,0.45);
+          color: rgba(200,255,248,0.96);
+          box-shadow: 0 0 10px rgba(0,255,213,0.10);
+        }
+        .mini-name {
+          min-width: 0;
+          flex: 1 1 auto;
+          font-size: 12px;
+          color: rgba(244,244,245,0.92);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .mini-name.climbed {
+          color: rgba(200,255,248,0.96);
+        }
+
+        .snap-mode-btn[aria-pressed="true"] {
+          background: rgba(255,255,255,0.10);
+          border: 1px solid rgba(255,255,255,0.14);
+        }
+      </style>
+
+      <script is:inline>
+        (function () {
+          // --- must match checklist page ---
+          var STORAGE_KEY = "my14ers_state_v1";
+
+          var MAPBOX_TOKEN = "pk.eyJ1Ijoiemhhbmd5dXR5biIsImEiOiJjbWplcjhmMHIwa2psM2tweTFyaTl3aWVmIn0.zCJY08mlW89VE-CNDsUaOg";
+          var MAPBOX_STYLE = "zhangyutyn/cmjeroj9p001x01s1g91zapo2";
+
+          function $(id) { return document.getElementById(id); }
+
+          function setStatus(msg) {
+            var el = $("snapStatus");
+            if (!el) return;
+            el.textContent = msg || "";
+            el.style.display = msg ? "block" : "none";
+          }
+
+          function normalize(s) {
+            s = (s || "").toLowerCase();
+            s = s.replace(/mount\\s+/g, "mt ");
+            s = s.replace(/\\bmt\\.\\s*/g, "mt ");
+            s = s.replace(/[()]/g, " ");
+            s = s.replace(/[^a-z0-9\\s]/g, "");
+            s = s.replace(/\\s+/g, " ").trim();
+            return s;
+          }
+
+          function loadState() {
+            try {
+              var raw = localStorage.getItem(STORAGE_KEY);
+              if (!raw) return { climbed: {} };
+              var obj = JSON.parse(raw);
+              if (!obj || typeof obj !== "object") return { climbed: {} };
+              if (!obj.climbed || typeof obj.climbed !== "object") obj.climbed = {};
+              return obj;
+            } catch (e) {
+              return { climbed: {} };
+            }
+          }
+
+          // same numbering as checklist page
+          function columnGroupForRange(range) {
+            var r = (range || "").toLowerCase();
+            if (r.indexOf("front") !== -1) return "frontsangre";
+            if (r.indexOf("sangre") !== -1) return "frontsangre";
+            if (r.indexOf("mosquito") !== -1) return "mosquitosawatch";
+            if (r.indexOf("sawatch") !== -1) return "mosquitosawatch";
+            if (r.indexOf("elk") !== -1) return "elksanjuan";
+            if (r.indexOf("san juan") !== -1) return "elksanjuan";
+            return "mosquitosawatch";
+          }
+          function groupRank(range) {
+            var g = columnGroupForRange(range);
+            if (g === "frontsangre") return 1;
+            if (g === "mosquitosawatch") return 2;
+            if (g === "elksanjuan") return 3;
+            return 9;
+          }
+          function assignNumbersLeftToRight(listData) {
+            var copy = listData.slice();
+            copy.sort(function (a, b) {
+              var ga = groupRank(a.range), gb = groupRank(b.range);
+              if (ga !== gb) return ga - gb;
+              if (a.lon !== b.lon) return a.lon - b.lon;
+              if (a.lat !== b.lat) return b.lat - a.lat;
+              return (a.name || "").localeCompare(b.name || "");
+            });
+            for (var i = 0; i < copy.length; i++) copy[i].number = i + 1;
+          }
+
+          function markerIcon(number, climbed) {
+            var state = climbed ? "climbed" : "notyet";
+            var html = '<div class="num-marker dark ' + state + '"><span>' + number + "</span></div>";
+            return window.L.divIcon({
+              className: "",
+              html: html,
+              iconSize: [20, 20],
+              iconAnchor: [10, 10],
+            });
+          }
+
+          function downloadDataUrl(dataUrl, filename) {
+            var a = document.createElement("a");
+            a.href = dataUrl;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+          }
+
+          // Shorten names a bit for mini list
+          function shortName(name) {
+            var s = String(name || "Unknown");
+            s = s.replace(/^Mount\\s+/i, "Mt. ");
+            s = s.replace(/^Mt\\s+/i, "Mt. ");
+            s = s.replace(/\\s+Peak$/i, " Peak");
+            return s;
+          }
+
+          // Static export (HQ): Mapbox Static Image + draw markers on canvas
+          function setupExportPNG(map, listData) {
+            var btn = $("exportPngBtn");
+            var mapEl = $("snapMap");
+            if (!btn || !map || !mapEl) return;
+
+            btn.addEventListener("click", async function () {
+              try {
+                btn.disabled = true;
+                btn.textContent = "Exporting…";
+
+                // Mapbox Static Images limits: keep within 1280px max dimension
+                var maxDim = 1280;
+
+                var w = mapEl.clientWidth;
+                var h = mapEl.clientHeight;
+
+                // target scale (try 3x, but clamp so W/H <= maxDim)
+                var desiredScale = 3;
+                var scale = Math.min(desiredScale, maxDim / w, maxDim / h);
+
+                // never go below 1.5x unless the container is already huge
+                scale = Math.max(scale, 1.5);
+
+                var W = Math.round(w * scale);
+                var H = Math.round(h * scale);
+
+                // final clamp
+                if (W > maxDim || H > maxDim) {
+                  var s2 = Math.min(maxDim / W, maxDim / H);
+                  W = Math.round(W * s2);
+                  H = Math.round(H * s2);
+                  scale = scale * s2;
+                }
+
+                var center = map.getCenter();
+                var zoom = map.getZoom();
+
+                var staticUrl =
+                  "https://api.mapbox.com/styles/v1/" + MAPBOX_STYLE + "/static/" +
+                  center.lng + "," + center.lat + "," + zoom + ",0/" +
+                  W + "x" + H +
+                  "?access_token=" + MAPBOX_TOKEN;
+
+                var img = new Image();
+                img.crossOrigin = "anonymous";
+                img.referrerPolicy = "no-referrer";
+
+                await new Promise(function (resolve, reject) {
+                  img.onload = resolve;
+                  img.onerror = function (e) {
+                    reject(new Error("Static image failed to load. URL size: " + W + "x" + H));
+                  };
+                  img.src = staticUrl;
+                });
+
+                var canvas = document.createElement("canvas");
+                canvas.width = W;
+                canvas.height = H;
+                var ctx = canvas.getContext("2d");
+
+                ctx.drawImage(img, 0, 0, W, H);
+
+                // Leaflet CRS math in world pixels
+                var crs = map.options.crs;
+                var z = zoom;
+
+                var centerPoint = crs.latLngToPoint(center, z);
+                var topLeft = window.L.point(centerPoint.x - W / 2, centerPoint.y - H / 2);
+
+                function drawMarker(x, y, number, climbed) {
+                  var r = 11 * scale;          // matches 22px marker
+                  var strokeW = 1.4 * scale;
+
+                  ctx.save();
+                  ctx.beginPath();
+                  ctx.arc(x, y, r, 0, Math.PI * 2);
+
+                  if (climbed) {
+                    ctx.fillStyle = "rgba(0,255,213,0.95)";
+                    ctx.fill();
+                    ctx.lineWidth = strokeW;
+                    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+                    ctx.stroke();
+
+                    ctx.shadowColor = "rgba(0,255,213,0.35)";
+                    ctx.shadowBlur = 10 * scale;
+                    ctx.beginPath();
+                    ctx.arc(x, y, r, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+
+                    ctx.fillStyle = "rgba(0,0,0,0.92)";
+                  } else {
+                    ctx.fillStyle = "rgba(0,0,0,0.28)";
+                    ctx.fill();
+                    ctx.lineWidth = strokeW;
+                    ctx.strokeStyle = "rgba(226,232,240,0.80)";
+                    ctx.stroke();
+                    ctx.fillStyle = "rgba(244,244,245,0.92)";
+                  }
+
+                  ctx.font = (10 * scale) + "px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+                  ctx.textAlign = "center";
+                  ctx.textBaseline = "middle";
+                  ctx.fillText(String(number), x, y + (0.2 * scale));
+
+                  ctx.restore();
+                }
+
+                for (var i = 0; i < listData.length; i++) {
+                  var it = listData[i];
+                  var ll = window.L.latLng(it.lat, it.lon);
+                  var p = crs.latLngToPoint(ll, z);
+
+                  var x = (p.x - topLeft.x);
+                  var y = (p.y - topLeft.y);
+
+                  drawMarker(x, y, it.number, it.climbed);
+                }
+
+                downloadDataUrl(canvas.toDataURL("image/png"), "my14ers-snapshot.png");
+              } catch (e) {
+                console.error(e);
+                alert(
+                  "Export failed. Most likely the static image request was blocked or too large.\n" +
+                  "Try again (it auto-scales), or we can switch export methods."
+                );
+              } finally {
+                btn.disabled = false;
+                btn.textContent = "Export PNG (HQ)";
+              }
+            });
+          }
+
+          function setMode(mode) {
+            var mini = $("miniWrap");
+            var pill = $("pill");
+
+            function press(id, on) {
+              var b = $(id);
+              if (!b) return;
+              b.setAttribute("aria-pressed", on ? "true" : "false");
+            }
+
+            if (mode === "count") {
+              mini.classList.add("hidden");
+              pill.classList.remove("hidden");
+              press("modeCount", true); press("modeMini", false); press("modeHide", false);
+            } else if (mode === "mini") {
+              mini.classList.remove("hidden");
+              pill.classList.add("hidden");
+              press("modeCount", false); press("modeMini", true); press("modeHide", false);
+            } else {
+              mini.classList.add("hidden");
+              pill.classList.add("hidden");
+              press("modeCount", false); press("modeMini", false); press("modeHide", true);
+            }
+          }
+
+          function renderMiniChecklist(listData) {
+            var grid = $("miniGrid");
+            if (!grid) return;
+
+            var copy = listData.slice().sort(function(a,b){ return a.number - b.number; });
+
+            var html = "";
+            for (var i = 0; i < copy.length; i++) {
+              var it = copy[i];
+              var nm = shortName(it.name);
+              html +=
+                '<div class="mini-row" title="' + (it.name || "") + '">' +
+                  '<div class="mini-num ' + (it.climbed ? "climbed" : "") + '">' + it.number + '</div>' +
+                  '<div class="mini-name ' + (it.climbed ? "climbed" : "") + '">' + nm + '</div>' +
+                '</div>';
+            }
+            grid.innerHTML = html;
+          }
+
+          window.addEventListener("load", function () {
+            $("genDate").textContent = new Date().toLocaleDateString();
+
+            $("modeCount")?.addEventListener("click", function(){ setMode("count"); });
+            $("modeMini")?.addEventListener("click", function(){ setMode("mini"); });
+            $("modeHide")?.addEventListener("click", function(){ setMode("hide"); });
+
+            setMode("count");
+
+            if (!window.L) {
+              setStatus("Leaflet failed to load.");
+              return;
+            }
+
+            setStatus("Loading peaks…");
+
+            fetch("/data/co-14ers.json", { cache: "no-store" })
+              .then(function(r){ return r.json(); })
+              .then(function(coJson){
+                var coPeaks = (coJson && Array.isArray(coJson.peaks)) ? coJson.peaks : [];
+                var state = loadState();
+
+                var listData = [];
+                var bounds = [];
+
+                function keyFor(pk) { return pk && (pk.id ? String(pk.id) : normalize(pk.name)); }
+
+                for (var i = 0; i < coPeaks.length; i++) {
+                  var pk = coPeaks[i];
+                  if (!pk || typeof pk.lat !== "number" || typeof pk.lon !== "number") continue;
+
+                  var k = keyFor(pk);
+                  var climbed = !!(k && state.climbed[k]);
+
+                  listData.push({
+                    idKey: k,
+                    pk: pk,
+                    name: pk.name || "Unknown",
+                    range: pk.range || "Unknown Range",
+                    elevation_ft: (typeof pk.elevation_ft === "number" ? pk.elevation_ft : 0),
+                    climbed: climbed,
+                    lat: pk.lat,
+                    lon: pk.lon,
+                    number: 0,
+                  });
+
+                  bounds.push([pk.lat, pk.lon]);
+                }
+
+                assignNumbersLeftToRight(listData);
+
+                var done = 0;
+                for (var j = 0; j < listData.length; j++) if (listData[j].climbed) done++;
+                $("pill").textContent = done + " / " + listData.length + " climbed";
+
+                renderMiniChecklist(listData);
+
+                setStatus("Rendering map…");
+
+                var map = window.L.map("snapMap", {
+                  scrollWheelZoom: false,
+                  zoomControl: false,
+                  attributionControl: false,
+                  renderer: window.L.svg(),
+                  zoomSnap: 0.1,
+                  zoomDelta: 0.2,
+                  dragging: false,
+                  doubleClickZoom: false,
+                  boxZoom: false,
+                  keyboard: false,
+                  tap: false,
+                  touchZoom: false,
+                });
+
+                var tiles =
+                  "https://api.mapbox.com/styles/v1/" + MAPBOX_STYLE +
+                  "/tiles/256/{z}/{x}/{y}@2x?access_token=" + MAPBOX_TOKEN;
+
+                window.L.tileLayer(tiles, {
+                  maxZoom: 20,
+                  tileSize: 256,
+                  zoomOffset: 0,
+                }).addTo(map);
+
+                // markers
+                var markerById = {};
+                function buildMarker(it) {
+                  var mk = markerById[it.idKey];
+                  var icon = markerIcon(it.number, it.climbed);
+                  if (!mk) {
+                    mk = window.L.marker([it.lat, it.lon], { icon: icon, interactive: false }).addTo(map);
+                    markerById[it.idKey] = mk;
+                  } else {
+                    mk.setIcon(icon);
+                  }
+                }
+                for (var m = 0; m < listData.length; m++) buildMarker(listData[m]);
+
+                // framing: checklist-style + small zoom-out so nothing is cut
+                if (bounds.length) {
+                  var b = window.L.latLngBounds(bounds);
+                  map.fitBounds(b, { padding: [18, 18], maxZoom: 8 });
+                  var z = map.getZoom();
+                  map.setZoom(Math.min(z + 1, 10));
+                  map.setZoom(Math.max(map.getZoom() - 0.35, 5));
+                } else {
+                  map.setView([39.0, -105.7], 7);
+                }
+
+                setupExportPNG(map, listData);
+                setStatus("");
+              })
+              .catch(function(err){
+                console.error("[snapshot] failed:", err);
+                setStatus("Failed to load data.");
+              });
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>

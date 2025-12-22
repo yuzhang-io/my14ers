@@ -1,3 +1,5 @@
+[![my14ers banner](assets/my14ers_banner.png)](https://yuzhang-io.github.io/)
+
 # Astro Starter Kit: Basics
 
 ```sh
