@@ -210,7 +210,6 @@ const {
         <div class="text-xs text-zinc-500">Front+Sangre · Mosquito+Sawatch · Elk+San Juan</div>
       </div>
 
-      <!-- ✅ SAFE RESPONSIVE GRID (no overflow) -->
       <div class="grid w-full min-w-0 gap-4 grid-cols-1 md:grid-cols-2 xl:grid-cols-3 items-start">
         <div id="range_frontsangre" class="min-w-0 w-full rounded-2xl border border-white/10 bg-black/15 p-3"></div>
         <div id="range_mosquitosawatch" class="min-w-0 w-full rounded-2xl border border-white/10 bg-black/15 p-3"></div>
@@ -235,11 +234,11 @@ const {
 
       function normalize(s) {
         s = (s || "").toLowerCase();
-        s = s.replace(/mount\s+/g, "mt ");
-        s = s.replace(/\bmt\.\s*/g, "mt ");
+        s = s.replace(/mount\\s+/g, "mt ");
+        s = s.replace(/\\bmt\\.\\s*/g, "mt ");
         s = s.replace(/[()]/g, " ");
-        s = s.replace(/[^a-z0-9\s]/g, "");
-        s = s.replace(/\s+/g, " ").trim();
+        s = s.replace(/[^a-z0-9\\s]/g, "");
+        s = s.replace(/\\s+/g, " ").trim();
         return s;
       }
 
@@ -474,9 +473,12 @@ const {
             var coPeaks = (coJson && Array.isArray(coJson.peaks)) ? coJson.peaks : [];
             var state = loadState();
 
+            // ✅ fractional zoom enabled here
             var map = window.L.map(MAP_ID, {
               scrollWheelZoom: true,
               renderer: window.L.svg(),
+              zoomSnap: 0.1,
+              zoomDelta: 0.2,
             });
 
             var MAPBOX_TOKEN = "pk.eyJ1Ijoiemhhbmd5dXR5biIsImEiOiJjbWplcjhmMHIwa2psM2tweTFyaTl3aWVmIn0.zCJY08mlW89VE-CNDsUaOg";
@@ -625,8 +627,11 @@ const {
             if (bounds.length) {
               var b = window.L.latLngBounds(bounds);
               map.fitBounds(b, { padding: [18, 18], maxZoom: 8 });
+
+              // ✅ "in-between" zoom
               var z = map.getZoom();
-              map.setZoom(Math.min(z, 10));
+              map.setZoom(Math.min(z , 10));
+
               map.once("moveend", captureHomeFinal);
               dark.once("load", captureHomeFinal);
             } else {
