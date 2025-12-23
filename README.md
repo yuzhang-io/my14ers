@@ -1,4 +1,4 @@
-[![my14ers banner](assets/my14ers_banner.png)](https://yuzhang-io.github.io/)
+[![my14ers banner](assets/my14ers_banner.png)](https://yuzhang-io.github.io/my14ers)
 
 # my14ers — Colorado 14er checklist
 

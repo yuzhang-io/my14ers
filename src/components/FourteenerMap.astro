@@ -1,6 +1,6 @@
 ---
-const astroBase = Astro.base ?? "/";
-const basePath = astroBase === "/" ? "" : astroBase.replace(/\/$/, "");
+const rawBase = import.meta.env.BASE_URL || "/";
+const basePath = rawBase === "/" ? "" : rawBase.replace(/\/$/, "");
 const defaultCoDataUrl = `${basePath}/data/co-14ers.json`;
 
 const {
@@ -676,6 +676,8 @@ const {
 
             function setBase(mode) {
               currentBase = mode;
+              document.documentElement.setAttribute("data-base", mode);
+              document.body.setAttribute("data-base", mode);
 
               if (map.hasLayer(dark)) map.removeLayer(dark);
               if (map.hasLayer(light)) map.removeLayer(light);
@@ -931,9 +933,9 @@ const {
 
               var mapSize = 780;
 
-              var headerH = 120;
-              var mapX = PAD;
-              var mapY = headerH + 44;
+            var headerH = 140;
+            var mapX = PAD;
+            var mapY = headerH + 44;
 
               var panelX = mapX + mapSize + GAP;
               var panelY = mapY;
@@ -956,19 +958,30 @@ const {
               canvas.height = H;
               var ctx = canvas.getContext("2d");
 
-              ctx.fillStyle = "rgb(9,9,11)";
+              var isLightBase = currentBase === "light";
+              var pageBg = isLightBase ? "rgb(244,245,252)" : "rgb(9,9,11)";
+              ctx.fillStyle = pageBg;
               ctx.fillRect(0, 0, W, H);
 
-              var grd = ctx.createRadialGradient(W*0.25, H*0.15, 10, W*0.25, H*0.15, W*0.9);
-              grd.addColorStop(0, "rgba(168,85,247,0.18)");
-              grd.addColorStop(0.55, "rgba(34,211,238,0.10)");
-              grd.addColorStop(1, "rgba(0,0,0,0)");
+              var grd = ctx.createRadialGradient(W*0.28, H*0.15, 10, W*0.28, H*0.15, W*0.9);
+              if (isLightBase) {
+                grd.addColorStop(0, "rgba(255,255,255,0.9)");
+                grd.addColorStop(0.5, "rgba(145,158,171,0.18)");
+                grd.addColorStop(1, "rgba(226,232,240,0)");
+              } else {
+                grd.addColorStop(0, "rgba(168,85,247,0.18)");
+                grd.addColorStop(0.55, "rgba(34,211,238,0.10)");
+                grd.addColorStop(1, "rgba(0,0,0,0)");
+              }
               ctx.fillStyle = grd;
               ctx.fillRect(0, 0, W, H);
 
-              ctx.fillStyle = "rgba(244,244,245,0.96)";
-              ctx.font = "800 64px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
-              ctx.fillText("Colorado 14ers", PAD, 98);
+              var titleColor = isLightBase ? "rgba(17,24,39,0.95)" : "rgba(244,244,245,0.96)";
+            ctx.fillStyle = titleColor;
+            ctx.font = "800 64px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+            ctx.textAlign = "center";
+            ctx.fillText("Colorado 14ers", W / 2, 98);
+            ctx.textAlign = "left";
 
               var pillText = done + " / " + total + " climbed";
               ctx.font = "700 20px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
@@ -977,16 +990,22 @@ const {
               var pillX = W - PAD - pillW;
               var pillY = 96;
 
-              ctx.fillStyle = "rgba(255,255,255,0.06)";
+              ctx.fillStyle = isLightBase ? "rgba(17,24,39,0.08)" : "rgba(255,255,255,0.06)";
               roundRect(ctx, pillX, pillY, pillW, pillH, 999, true, false);
-              ctx.strokeStyle = "rgba(255,255,255,0.12)";
+              ctx.strokeStyle = isLightBase ? "rgba(15,23,42,0.2)" : "rgba(255,255,255,0.12)";
               ctx.lineWidth = 1;
               roundRect(ctx, pillX, pillY, pillW, pillH, 999, false, true);
 
-              ctx.fillStyle = "rgba(244,244,245,0.92)";
+              ctx.fillStyle = titleColor;
               ctx.fillText(pillText, pillX + 15, pillY + 26);
 
+              var mapCardFill = isLightBase ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.20)";
+              var mapCardBorder = isLightBase ? "rgba(15,23,42,0.2)" : "rgba(255,255,255,0.1)";
+              ctx.fillStyle = mapCardFill;
               drawCard(ctx, mapX, mapY, mapSize, mapSize, 26);
+              ctx.strokeStyle = mapCardBorder;
+              ctx.lineWidth = 1;
+              roundRect(ctx, mapX, mapY, mapSize, mapSize, 26, false, true);
               ctx.save();
               clipRoundRect(ctx, mapX, mapY, mapSize, mapSize, 26);
               ctx.drawImage(mapSource, mapX, mapY, mapSize, mapSize);
@@ -1015,7 +1034,7 @@ const {
               ctx.save();
               clipRoundRect(ctx, mapX, mapY, mapSize, mapSize, 26);
 
-              ctx.strokeStyle = "rgba(255,255,255,0.26)";
+              ctx.strokeStyle = isLightBase ? "rgba(25,25,25,0.18)" : "rgba(255,255,255,0.26)";
               ctx.lineWidth = 1;
               for (var li = 0; li < pts.length; li++) {
                 var p0x = mapX + pts[li].ox;
@@ -1042,11 +1061,19 @@ const {
 
               ctx.restore();
 
+              var panelFill = isLightBase ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.40)";
+              var panelStroke = isLightBase ? "rgba(15,23,42,0.25)" : "rgba(255,255,255,0.10)";
+              ctx.fillStyle = panelFill;
               drawCard(ctx, panelX, panelY, panelW, panelH, 26);
+              ctx.strokeStyle = panelStroke;
+              ctx.lineWidth = 1.2;
+              roundRect(ctx, panelX, panelY, panelW, panelH, 26, false, true);
 
-              ctx.fillStyle = "rgba(244,244,245,0.92)";
+              ctx.fillStyle = isLightBase ? "rgba(17,24,39,0.9)" : "rgba(244,244,245,0.92)";
               ctx.font = "800 24px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
-              ctx.fillText("Checklist", panelX + 18, panelY + 38);
+              ctx.textAlign = "center";
+              ctx.fillText("Checklist", panelX + panelW / 2, panelY + 38);
+              ctx.textAlign = "left";
 
               var colDefs = [
                 { group: "frontsangre", sections: ["Front Range", "Sangre de Cristo Range"] },
@@ -1083,7 +1110,7 @@ const {
               var colW = Math.max(140, Math.floor(baseColW * 0.92));
               var totalTableW = colW * 3 + colGap * 2;
               var startX = panelX + innerPad + Math.floor((panelW - innerPad*2 - totalTableW) / 2);
-              var startY = panelY + 56;
+              var startY = panelY + 72;
 
               for (var c = 0; c < colDefs.length; c++) {
                 var def = colDefs[c];
@@ -1095,7 +1122,7 @@ const {
                   var items = cols[def.group][sec] || [];
                   if (!items.length) continue;
 
-                  ctx.fillStyle = "rgba(244,244,245,0.92)";
+                  ctx.fillStyle = isLightBase ? "rgba(17,24,39,0.88)" : "rgba(244,244,245,0.92)";
                   ctx.font = "800 13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
                   ctx.fillText(sec, cx, cy + 14);
                   cy += 22;
@@ -1106,9 +1133,9 @@ const {
                   for (var ri = 0; ri < items.length; ri++) {
                     var itR = items[ri];
 
-                    ctx.fillStyle = "rgba(0,0,0,0.18)";
+                    ctx.fillStyle = isLightBase ? "rgba(13,18,35,0.16)" : "rgba(0,0,0,0.18)";
                     roundRect(ctx, cx, cy, colW, tileH, 12, true, false);
-                    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+                    ctx.strokeStyle = isLightBase ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.10)";
                     ctx.lineWidth = 1;
                     roundRect(ctx, cx, cy, colW, tileH, 12, false, true);
 
@@ -1116,7 +1143,10 @@ const {
                     drawMiniNum(ctx, cx + 12, centerY, itR.number, itR.climbed, 9, currentBase);
 
                     var nm = shortName(itR.name);
-                    ctx.fillStyle = itR.climbed ? "rgba(200,255,248,0.96)" : "rgba(244,244,245,0.90)";
+                    var rowTextColor = isLightBase
+                      ? (itR.climbed ? "rgba(0,99,92,0.95)" : "rgba(15,23,42,0.9)")
+                      : (itR.climbed ? "rgba(200,255,248,0.96)" : "rgba(244,244,245,0.90)");
+                    ctx.fillStyle = rowTextColor;
                     ctx.font = "700 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
                     ctx.textBaseline = "middle";
                     ctx.fillText(ellipsis(ctx, nm, colW - 44), cx + 30, centerY);
