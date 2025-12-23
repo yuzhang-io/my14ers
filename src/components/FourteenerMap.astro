@@ -189,6 +189,19 @@ const {
       >
         Clear all
       </button>
+
+      <button
+        id="exportSnapshotBtn"
+        class="rounded-2xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-100 backdrop-blur hover:bg-white/10 hover:border-white/20"
+        aria-label="Export PNG"
+        title="Export PNG"
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="h-4 w-4">
+          <rect x="3" y="7" width="18" height="14" rx="2" ry="2"></rect>
+          <path d="M8 7V5h8v2"></path>
+          <circle cx="12" cy="13" r="3"></circle>
+        </svg>
+      </button>
     </div>
   </div>
 
@@ -227,10 +240,22 @@ const {
       var CO_URL = coDataUrl;
       var MAP_ID = mapId;
 
+      var MAPBOX_TOKEN = "pk.eyJ1Ijoiemhhbmd5dXR5biIsImEiOiJjbWplcjhmMHIwa2psM2tweTFyaTl3aWVmIn0.zCJY08mlW89VE-CNDsUaOg";
       var STORAGE_KEY = "my14ers_state_v1";
       var currentBase = "dark";
+      var isExportingSnapshot = false;
+
+      var MAPBOX_STYLE_DARK = "zhangyutyn/cmjeroj9p001x01s1g91zapo2";
+      var MAPBOX_STYLE_LIGHT = "mapbox/light-v11";
+      var ARCGIS_RELIEF_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/export";
+      var ARCGIS_HILLSHADE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/export";
+      var ARCGIS_LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Terrain_Reference/MapServer/export";
 
       function $(id) { return document.getElementById(id); }
+
+      function mapboxStyleForBase(base) {
+        return (base === "light") ? MAPBOX_STYLE_LIGHT : MAPBOX_STYLE_DARK;
+      }
 
       function normalize(s) {
         s = (s || "").toLowerCase();
@@ -280,6 +305,17 @@ const {
         if (r.indexOf("san juan") !== -1) return "elksanjuan";
 
         return "mosquitosawatch";
+      }
+
+      function rangePriority(range) {
+        var r = (range || "").toLowerCase();
+        if (r.indexOf("front") !== -1) return 1;
+        if (r.indexOf("sangre") !== -1) return 2;
+        if (r.indexOf("mosquito") !== -1) return 3;
+        if (r.indexOf("sawatch") !== -1) return 4;
+        if (r.indexOf("elk") !== -1) return 5;
+        if (r.indexOf("san juan") !== -1) return 6;
+        return 99;
       }
 
       function rangeTitle(range) { return range || "Unknown Range"; }
@@ -481,9 +517,8 @@ const {
               zoomDelta: 0.2,
             });
 
-            var MAPBOX_TOKEN = "pk.eyJ1Ijoiemhhbmd5dXR5biIsImEiOiJjbWplcjhmMHIwa2psM2tweTFyaTl3aWVmIn0.zCJY08mlW89VE-CNDsUaOg";
             var mapboxStyleTiles =
-              "https://api.mapbox.com/styles/v1/zhangyutyn/cmjeroj9p001x01s1g91zapo2/tiles/256/{z}/{x}/{y}@2x?access_token=" +
+              "https://api.mapbox.com/styles/v1/" + mapboxStyleForBase("dark") + "/tiles/256/{z}/{x}/{y}@2x?access_token=" +
               MAPBOX_TOKEN;
 
             var dark = window.L.tileLayer(mapboxStyleTiles, {
@@ -582,21 +617,14 @@ const {
             }
 
             function assignNumbersLeftToRight() {
-              function groupRank(range) {
-                var g = columnGroupForRange(range);
-                if (g === "frontsangre") return 1;
-                if (g === "mosquitosawatch") return 2;
-                if (g === "elksanjuan") return 3;
-                return 9;
-              }
-
               var copy = listData.slice();
               copy.sort(function (a, b) {
-                var ga = groupRank(a.range), gb = groupRank(b.range);
-                if (ga !== gb) return ga - gb;
-                if (a.lon !== b.lon) return a.lon - b.lon;
-                if (a.lat !== b.lat) return b.lat - a.lat;
-                return a.name.localeCompare(b.name);
+                var pa = rangePriority(a.range), pb = rangePriority(b.range);
+                if (pa !== pb) return pa - pb;
+                var ra = (a.pk && typeof a.pk.rank === "number") ? a.pk.rank : Number.MAX_SAFE_INTEGER;
+                var rb = (b.pk && typeof b.pk.rank === "number") ? b.pk.rank : Number.MAX_SAFE_INTEGER;
+                if (ra !== rb) return ra - rb;
+                return (a.name || "").localeCompare(b.name || "");
               });
 
               for (var i = 0; i < copy.length; i++) copy[i].number = i + 1;
@@ -842,6 +870,13 @@ const {
               ev.target.value = "";
             });
 
+            var exportSnapshotBtn = $("exportSnapshotBtn");
+            if (exportSnapshotBtn) {
+              exportSnapshotBtn.addEventListener("click", function () {
+                exportSnapshot(exportSnapshotBtn);
+              });
+            }
+
             $("clearBtn").addEventListener("click", function () {
               state.climbed = {};
               saveState(state);
@@ -858,6 +893,580 @@ const {
             renderChecklist("");
             refreshSpider();
             setStatus("Ready");
+
+            async function exportSnapshot(button) {
+              if (!button || isExportingSnapshot) return;
+              isExportingSnapshot = true;
+              button.disabled = true;
+              button.classList.add("opacity-60");
+              button.setAttribute("aria-busy", "true");
+
+              var total = listData.length;
+              var done = 0;
+              for (var i = 0; i < total; i++) if (listData[i].climbed) done++;
+
+              var view;
+              if (bounds.length) {
+                var b = window.L.latLngBounds(bounds);
+                view = getStaticView(b, 780);
+              } else {
+                view = { center: map.getCenter(), zoom: map.getZoom() };
+              }
+
+              try {
+                await exportPNG43(view, done, total);
+              } catch (err) {
+                console.error("[exportSnapshot] failed:", err);
+                alert("Export failed; see console for details.");
+              } finally {
+                button.disabled = false;
+                button.classList.remove("opacity-60");
+                button.removeAttribute("aria-busy");
+                isExportingSnapshot = false;
+              }
+            }
+
+            async function exportPNG43(exportView, done, total) {
+              var W = 1600, H = 1200;
+              var PAD = 72;
+              var GAP = 36;
+
+              var mapSize = 780;
+
+              var headerH = 120;
+              var mapX = PAD;
+              var mapY = headerH + 44;
+
+              var panelX = mapX + mapSize + GAP;
+              var panelY = mapY;
+              var panelW = W - PAD - panelX;
+              var panelH = mapSize;
+
+              var center = exportView.center;
+              var zoom = exportView.zoom;
+
+              var mapSource;
+              if (currentBase === "light") {
+                mapSource = await loadArcGISScene(exportView, mapSize);
+              } else {
+                var staticUrl =
+                  "https://api.mapbox.com/styles/v1/" + mapboxStyleForBase(currentBase) + "/static/" +
+                  center.lng + "," + center.lat + "," + zoom + ",0/" +
+                  mapSize + "x" + mapSize +
+                  "?access_token=" + MAPBOX_TOKEN +
+                  "&logo=false&attribution=false";
+                mapSource = await loadImage(staticUrl);
+              }
+
+              var canvas = document.createElement("canvas");
+              canvas.width = W;
+              canvas.height = H;
+              var ctx = canvas.getContext("2d");
+
+              ctx.fillStyle = "rgb(9,9,11)";
+              ctx.fillRect(0, 0, W, H);
+
+              var grd = ctx.createRadialGradient(W*0.25, H*0.15, 10, W*0.25, H*0.15, W*0.9);
+              grd.addColorStop(0, "rgba(168,85,247,0.18)");
+              grd.addColorStop(0.55, "rgba(34,211,238,0.10)");
+              grd.addColorStop(1, "rgba(0,0,0,0)");
+              ctx.fillStyle = grd;
+              ctx.fillRect(0, 0, W, H);
+
+              ctx.fillStyle = "rgba(244,244,245,0.96)";
+              ctx.font = "800 64px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+              ctx.fillText("Colorado 14ers", PAD, 98);
+
+              var pillText = done + " / " + total + " climbed";
+              ctx.font = "700 20px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+              var pillW = Math.ceil(ctx.measureText(pillText).width) + 30;
+              var pillH = 40;
+              var pillX = W - PAD - pillW;
+              var pillY = 96;
+
+              ctx.fillStyle = "rgba(255,255,255,0.06)";
+              roundRect(ctx, pillX, pillY, pillW, pillH, 999, true, false);
+              ctx.strokeStyle = "rgba(255,255,255,0.12)";
+              ctx.lineWidth = 1;
+              roundRect(ctx, pillX, pillY, pillW, pillH, 999, false, true);
+
+              ctx.fillStyle = "rgba(244,244,245,0.92)";
+              ctx.fillText(pillText, pillX + 15, pillY + 26);
+
+              drawCard(ctx, mapX, mapY, mapSize, mapSize, 26);
+              ctx.save();
+              clipRoundRect(ctx, mapX, mapY, mapSize, mapSize, 26);
+              ctx.drawImage(mapSource, mapX, mapY, mapSize, mapSize);
+              ctx.restore();
+
+              var crs = map.options.crs;
+              var z = zoom;
+              var centerPoint = crs.latLngToPoint(center, z);
+              var topLeft = window.L.point(centerPoint.x - mapSize / 2, centerPoint.y - mapSize / 2);
+
+              var pts = [];
+              for (var i = 0; i < listData.length; i++) {
+                var it = listData[i];
+                var ll = window.L.latLng(it.lat, it.lon);
+                var p = crs.latLngToPoint(ll, z);
+                pts.push({
+                  it: it,
+                  ox: p.x - topLeft.x,
+                  oy: p.y - topLeft.y,
+                  x:  p.x - topLeft.x,
+                  y:  p.y - topLeft.y
+                });
+              }
+              spiderPixels(pts, 20, 22, 0.10, 0.60, 34);
+
+              ctx.save();
+              clipRoundRect(ctx, mapX, mapY, mapSize, mapSize, 26);
+
+              ctx.strokeStyle = "rgba(255,255,255,0.26)";
+              ctx.lineWidth = 1;
+              for (var li = 0; li < pts.length; li++) {
+                var p0x = mapX + pts[li].ox;
+                var p0y = mapY + pts[li].oy;
+                var p1x = mapX + pts[li].x;
+                var p1y = mapY + pts[li].y;
+                if (Math.abs(p1x - p0x) < 0.2 && Math.abs(p1y - p0y) < 0.2) continue;
+                ctx.beginPath();
+                ctx.moveTo(p0x, p0y);
+                ctx.lineTo(p1x, p1y);
+                ctx.stroke();
+              }
+
+              for (var mi = 0; mi < pts.length; mi++) {
+                drawMarker(ctx, mapX + pts[mi].x, mapY + pts[mi].y, pts[mi].it.number, pts[mi].it.climbed, 1.0);
+              }
+
+              var creditColor = (currentBase === "light") ? "rgba(28,28,30,0.75)" : "rgba(244,244,245,0.70)";
+              ctx.fillStyle = creditColor;
+              ctx.font = "600 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+              ctx.textAlign = "left";
+              ctx.textBaseline = "alphabetic";
+              ctx.fillText("© Mapbox © OpenStreetMap", mapX + 18, mapY + mapSize - 16);
+
+              ctx.restore();
+
+              drawCard(ctx, panelX, panelY, panelW, panelH, 26);
+
+              ctx.fillStyle = "rgba(244,244,245,0.92)";
+              ctx.font = "800 24px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+              ctx.fillText("Checklist", panelX + 18, panelY + 38);
+
+              var colDefs = [
+                { group: "frontsangre", sections: ["Front Range", "Sangre de Cristo Range"] },
+                { group: "mosquitosawatch", sections: ["Mosquito Range", "Sawatch Range"] },
+                { group: "elksanjuan", sections: ["Elk Mountains", "San Juan Mountains"] },
+              ];
+
+              var cols = {
+                frontsangre: { "Front Range": [], "Sangre de Cristo Range": [] },
+                mosquitosawatch: { "Mosquito Range": [], "Sawatch Range": [] },
+                elksanjuan: { "Elk Mountains": [], "San Juan Mountains": [] },
+              };
+
+              for (var bi = 0; bi < listData.length; bi++) {
+                var itB = listData[bi];
+                var col = columnGroupForRange(itB.range);
+                if (!cols[col]) col = "mosquitosawatch";
+                var rk = rangeKey(itB.range);
+                if (cols[col][rk] === undefined) {
+                  rk = colDefs.find(function (d) { return d.group === col; }).sections[0];
+                }
+                cols[col][rk].push(itB);
+              }
+
+              Object.keys(cols).forEach(function (k) {
+                Object.keys(cols[k]).forEach(function (s) {
+                  cols[k][s].sort(function (a, b) { return a.number - b.number; });
+                });
+              });
+
+              var innerPad = 18;
+              var colGap = 12;
+              var baseColW = Math.floor((panelW - innerPad*2 - colGap*2) / 3);
+              var colW = Math.max(140, Math.floor(baseColW * 0.92));
+              var totalTableW = colW * 3 + colGap * 2;
+              var startX = panelX + innerPad + Math.floor((panelW - innerPad*2 - totalTableW) / 2);
+              var startY = panelY + 56;
+
+              for (var c = 0; c < colDefs.length; c++) {
+                var def = colDefs[c];
+                var cx = startX + c*(colW + colGap);
+                var cy = startY;
+
+                for (var si = 0; si < def.sections.length; si++) {
+                  var sec = def.sections[si];
+                  var items = cols[def.group][sec] || [];
+                  if (!items.length) continue;
+
+                  ctx.fillStyle = "rgba(244,244,245,0.92)";
+                  ctx.font = "800 13px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+                  ctx.fillText(sec, cx, cy + 14);
+                  cy += 22;
+
+                  var tileH = 26;
+                  var rowH = tileH + 4;
+
+                  for (var ri = 0; ri < items.length; ri++) {
+                    var itR = items[ri];
+
+                    ctx.fillStyle = "rgba(0,0,0,0.18)";
+                    roundRect(ctx, cx, cy, colW, tileH, 12, true, false);
+                    ctx.strokeStyle = "rgba(255,255,255,0.10)";
+                    ctx.lineWidth = 1;
+                    roundRect(ctx, cx, cy, colW, tileH, 12, false, true);
+
+                    var centerY = cy + tileH / 2;
+                    drawMiniNum(ctx, cx + 12, centerY, itR.number, itR.climbed, 9);
+
+                    var nm = shortName(itR.name);
+                    ctx.fillStyle = itR.climbed ? "rgba(200,255,248,0.96)" : "rgba(244,244,245,0.90)";
+                    ctx.font = "700 12px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+                    ctx.textBaseline = "middle";
+                    ctx.fillText(ellipsis(ctx, nm, colW - 44), cx + 30, centerY);
+                    ctx.textBaseline = "alphabetic";
+
+                    cy += rowH;
+                    if (cy > panelY + panelH - 24) break;
+                  }
+
+                  cy += 6;
+                  if (cy > panelY + panelH - 24) break;
+                }
+              }
+
+              downloadDataUrl(canvas.toDataURL("image/png"), "my14ers-snapshot-4x3.png");
+            }
+
+            function downloadDataUrl(dataUrl, filename) {
+              var a = document.createElement("a");
+              a.href = dataUrl;
+              a.download = filename;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            }
+
+            function rangeKey(r) {
+              r = (r || "").toLowerCase();
+              if (r.indexOf("front") !== -1) return "Front Range";
+              if (r.indexOf("sangre") !== -1) return "Sangre de Cristo Range";
+              if (r.indexOf("mosquito") !== -1) return "Mosquito Range";
+              if (r.indexOf("sawatch") !== -1) return "Sawatch Range";
+              if (r.indexOf("elk") !== -1) return "Elk Mountains";
+              if (r.indexOf("san juan") !== -1) return "San Juan Mountains";
+              return "Other";
+            }
+
+            function loadImage(src) {
+              return new Promise(function (resolve, reject) {
+                var img = new Image();
+                img.crossOrigin = "anonymous";
+                img.referrerPolicy = "no-referrer";
+                img.onload = function () { resolve(img); };
+                img.onerror = function () { reject(new Error("Failed to load image: " + src)); };
+                img.src = src;
+              });
+            }
+
+            function bboxForExportView(exportView, size) {
+              var crs = map.options.crs;
+              var z = exportView.zoom;
+              var centerPoint = crs.latLngToPoint(exportView.center, z);
+              var half = size / 2;
+              var topLeftPoint = window.L.point(centerPoint.x - half, centerPoint.y - half);
+              var bottomRightPoint = window.L.point(centerPoint.x + half, centerPoint.y + half);
+              var topLeftLatLng = crs.pointToLatLng(topLeftPoint, z);
+              var bottomRightLatLng = crs.pointToLatLng(bottomRightPoint, z);
+              var minX = Math.min(topLeftLatLng.lng, bottomRightLatLng.lng);
+              var maxX = Math.max(topLeftLatLng.lng, bottomRightLatLng.lng);
+              var minY = Math.min(bottomRightLatLng.lat, topLeftLatLng.lat);
+              var maxY = Math.max(bottomRightLatLng.lat, topLeftLatLng.lat);
+              return minX + "," + minY + "," + maxX + "," + maxY;
+            }
+
+            function arcgisExportUrl(serviceUrl, bbox, size, transparent) {
+              return (
+                serviceUrl +
+                "?bbox=" + bbox +
+                "&bboxSR=4326&imageSR=4326" +
+                "&size=" + size + "," + size +
+                "&dpi=96&format=png32" +
+                "&transparent=" + (transparent ? "true" : "false")
+              );
+            }
+
+            async function loadArcGISScene(exportView, size) {
+              var bbox = bboxForExportView(exportView, size);
+              var baseImg = await loadImage(arcgisExportUrl(ARCGIS_RELIEF_URL, bbox, size, false));
+              var hillshadeImg = await loadImage(arcgisExportUrl(ARCGIS_HILLSHADE_URL, bbox, size, true));
+              var labelsImg = await loadImage(arcgisExportUrl(ARCGIS_LABELS_URL, bbox, size, true));
+
+              var canvas = document.createElement("canvas");
+              canvas.width = size;
+              canvas.height = size;
+              var ctx = canvas.getContext("2d");
+              ctx.drawImage(baseImg, 0, 0, size, size);
+              ctx.globalAlpha = 0.35;
+              ctx.drawImage(hillshadeImg, 0, 0, size, size);
+              ctx.globalAlpha = 1;
+              ctx.drawImage(labelsImg, 0, 0, size, size);
+              return canvas;
+            }
+
+            function ellipsis(ctx, text, maxW) {
+              if (ctx.measureText(text).width <= maxW) return text;
+              var t = text;
+              while (t.length > 3 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1);
+              return t + "…";
+            }
+
+            function shortName(name) {
+              var s = String(name || "Unknown");
+              s = s.replace(/^Mount\s+/i, "Mt. ");
+              s = s.replace(/^Mt\s+/i, "Mt. ");
+              s = s.replace(/\s+Mountain$/i, " Mtn.");
+              s = s.replace(/\s+Peak$/i, " Peak");
+              s = s.replace(/\s+Point$/i, " Pt.");
+              return s;
+            }
+
+            function drawCard(ctx, x, y, w, h, r) {
+              ctx.fillStyle = "rgba(255,255,255,0.05)";
+              roundRect(ctx, x, y, w, h, r, true, false);
+              ctx.strokeStyle = "rgba(255,255,255,0.10)";
+              ctx.lineWidth = 1;
+              roundRect(ctx, x, y, w, h, r, false, true);
+            }
+
+            function drawMiniNum(ctx, cx, cy, number, climbed, r) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(cx, cy, r, 0, Math.PI*2);
+              if (climbed) {
+                ctx.fillStyle = "rgba(0,255,213,0.20)";
+                ctx.fill();
+                ctx.strokeStyle = "rgba(0,255,213,0.40)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = "rgba(200,255,248,0.96)";
+              } else {
+                ctx.fillStyle = "rgba(0,0,0,0.28)";
+                ctx.fill();
+                ctx.strokeStyle = "rgba(226,232,240,0.70)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                ctx.fillStyle = "rgba(244,244,245,0.92)";
+              }
+              ctx.font = "900 11px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(String(number), cx, cy + 0.5);
+              ctx.restore();
+            }
+
+            function drawMarker(ctx, x, y, number, climbed, scale) {
+              var r = 11 * scale;
+              var strokeW = 1.4 * scale;
+
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(x, y, r, 0, Math.PI*2);
+
+              if (climbed) {
+                ctx.fillStyle = "rgba(0,255,213,0.95)";
+                ctx.fill();
+                ctx.lineWidth = strokeW;
+                ctx.strokeStyle = "rgba(255,255,255,0.95)";
+                ctx.stroke();
+
+                ctx.shadowColor = "rgba(0,255,213,0.30)";
+                ctx.shadowBlur = 10 * scale;
+                ctx.beginPath();
+                ctx.arc(x, y, r, 0, Math.PI*2);
+                ctx.stroke();
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = "rgba(0,0,0,0.92)";
+              } else {
+                ctx.fillStyle = "rgba(0,0,0,0.28)";
+                ctx.fill();
+                ctx.lineWidth = strokeW;
+                ctx.strokeStyle = "rgba(226,232,240,0.80)";
+                ctx.stroke();
+                ctx.fillStyle = "rgba(244,244,245,0.92)";
+              }
+
+              ctx.font = (10 * scale) + "px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(String(number), x, y + (0.2 * scale));
+              ctx.restore();
+            }
+
+            function roundRect(ctx, x, y, w, h, r, fill, stroke) {
+              if (r > h/2) r = h/2;
+              if (r > w/2) r = w/2;
+              ctx.beginPath();
+              ctx.moveTo(x + r, y);
+              ctx.arcTo(x + w, y, x + w, y + h, r);
+              ctx.arcTo(x + w, y + h, x, y + h, r);
+              ctx.arcTo(x, y + h, x, y, r);
+              ctx.arcTo(x, y, x + w, y, r);
+              ctx.closePath();
+              if (fill) ctx.fill();
+              if (stroke) ctx.stroke();
+            }
+
+            function clipRoundRect(ctx, x, y, w, h, r) {
+              if (r > h/2) r = h/2;
+              if (r > w/2) r = w/2;
+              ctx.beginPath();
+              ctx.moveTo(x + r, y);
+              ctx.arcTo(x + w, y, x + w, y + h, r);
+              ctx.arcTo(x + w, y + h, x, y + h, r);
+              ctx.arcTo(x, y + h, x, y, r);
+              ctx.arcTo(x, y, x + w, y, r);
+              ctx.closePath();
+              ctx.clip();
+            }
+
+            function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
+
+            function latLngToWorldPx(lat, lon, z) {
+              var sin = Math.sin(lat * Math.PI / 180);
+              sin = clamp(sin, -0.9999, 0.9999);
+              var scale = 256 * Math.pow(2, z);
+              var x = (lon + 180) / 360 * scale;
+              var y = (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale;
+              return { x: x, y: y };
+            }
+
+            function getFitZoomForBounds(bounds, w, h, padPx) {
+              var padding = padPx || 0;
+              var W = Math.max(1, w - 2 * padding);
+              var H = Math.max(1, h - 2 * padding);
+
+              var sw = bounds.getSouthWest();
+              var ne = bounds.getNorthEast();
+
+              for (var z = 14; z >= 4; z--) {
+                var a = latLngToWorldPx(sw.lat, sw.lng, z);
+                var b = latLngToWorldPx(ne.lat, ne.lng, z);
+                var dx = Math.abs(b.x - a.x);
+                var dy = Math.abs(b.y - a.y);
+                if (dx <= W && dy <= H) return z;
+              }
+              return 4;
+            }
+
+            function getStaticView(bounds, sizePx) {
+              var pad = 26;
+              var z = getFitZoomForBounds(bounds, sizePx, sizePx, pad);
+              z = Math.min(z + 1, 12);
+              var c = bounds.getCenter();
+              return { center: c, zoom: z };
+            }
+
+            function spiderPixels(points, minDist, ITER, spring, repel, maxDisp) {
+              function connectedComponents(nodes, minDist) {
+                var n = nodes.length;
+                var parent = new Array(n);
+                for (var i = 0; i < n; i++) parent[i] = i;
+
+                function find(x) {
+                  while (parent[x] !== x) {
+                    parent[x] = parent[parent[x]];
+                    x = parent[x];
+                  }
+                  return x;
+                }
+                function union(a, b) {
+                  var ra = find(a), rb = find(b);
+                  if (ra !== rb) parent[rb] = ra;
+                }
+
+                var min2 = minDist * minDist;
+                for (var a = 0; a < n; a++) {
+                  for (var b = a + 1; b < n; b++) {
+                    var dx = nodes[b].ox - nodes[a].ox;
+                    var dy = nodes[b].oy - nodes[a].oy;
+                    if (dx*dx + dy*dy < min2) union(a, b);
+                  }
+                }
+
+                var groups = {};
+                for (var k = 0; k < n; k++) {
+                  var r = find(k);
+                  if (!groups[r]) groups[r] = [];
+                  groups[r].push(nodes[k]);
+                }
+                return Object.values(groups);
+              }
+
+              var comps = connectedComponents(points, minDist);
+              var min2 = minDist * minDist;
+
+              for (var c = 0; c < comps.length; c++) {
+                var comp = comps[c];
+                if (comp.length <= 1) {
+                  comp[0].x = comp[0].ox;
+                  comp[0].y = comp[0].oy;
+                  continue;
+                }
+
+                for (var ii = 0; ii < comp.length; ii++) {
+                  comp[ii].x = comp[ii].ox;
+                  comp[ii].y = comp[ii].oy;
+                }
+
+                for (var it = 0; it < ITER; it++) {
+                  for (var s = 0; s < comp.length; s++) {
+                    comp[s].x += (comp[s].ox - comp[s].x) * spring;
+                    comp[s].y += (comp[s].oy - comp[s].y) * spring;
+                  }
+
+                  for (var a = 0; a < comp.length; a++) {
+                    for (var b = a + 1; b < comp.length; b++) {
+                      var dx = comp[b].x - comp[a].x;
+                      var dy = comp[b].y - comp[a].y;
+                      var d2 = dx*dx + dy*dy;
+
+                      if (d2 < 0.0001) {
+                        dx = (Math.random() - 0.5) * 0.2;
+                        dy = (Math.random() - 0.5) * 0.2;
+                        d2 = dx*dx + dy*dy;
+                      }
+
+                      if (d2 < min2) {
+                        var d = Math.sqrt(d2);
+                        var push = (minDist - d) * repel;
+                        var ux = dx / d;
+                        var uy = dy / d;
+
+                        comp[a].x -= ux * push * 0.5;
+                        comp[a].y -= uy * push * 0.5;
+                        comp[b].x += ux * push * 0.5;
+                        comp[b].y += uy * push * 0.5;
+                      }
+                    }
+                  }
+
+                  for (var k = 0; k < comp.length; k++) {
+                    var ddx = comp[k].x - comp[k].ox;
+                    var ddy = comp[k].y - comp[k].oy;
+                    var dist = Math.sqrt(ddx*ddx + ddy*ddy);
+                    if (dist > maxDisp) {
+                      comp[k].x = comp[k].ox + (ddx/dist) * maxDisp;
+                      comp[k].y = comp[k].oy + (ddy/dist) * maxDisp;
+                    }
+                  }
+                }
+              }
+            }
           })
           .catch(function (err) {
             console.error(err);
