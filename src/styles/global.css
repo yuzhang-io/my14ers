@@ -16,7 +16,7 @@
 /* Hillshade blend */
 .leaflet-tile.hillshade-tile { mix-blend-mode: multiply; }
 
-/* ====== Markers (more obvious) ====== */
+/* Your older marker styles (still fine to keep around) */
 .peak-dot-wrap { background: transparent !important; border: 0 !important; }
 .peak-dot {
   display: block;
@@ -26,7 +26,6 @@
   transform: translateZ(0);
   transition: transform 140ms ease, filter 140ms ease, opacity 140ms ease;
 }
-
 .peak-dot--todo {
   background: rgba(0,0,0,0.10);
   border: 2px solid rgba(226,232,240,0.65);
@@ -35,7 +34,6 @@
     0 0 14px rgba(168,85,247,0.12);
   opacity: 0.9;
 }
-
 .peak-dot--climbed {
   background: rgba(0,199,168,0.95);
   border: 2px solid rgba(255,255,255,0.95);
@@ -44,13 +42,12 @@
     0 0 18px rgba(0,255,213,0.55),
     0 0 26px rgba(168,85,247,0.22);
 }
-
 .leaflet-marker-icon:hover .peak-dot {
   transform: scale(1.12);
   filter: drop-shadow(0 0 10px rgba(244,244,245,0.28));
 }
 
-/* ====== Tooltip labels used for spider mode ====== */
+/* Tooltip labels used for spider mode (fine to keep) */
 .spider-label {
   border-radius: 999px;
   border: 1px solid rgba(255,255,255,0.14);
@@ -74,7 +71,7 @@
     0 0 18px rgba(168,85,247,0.14);
 }
 
-/* ====== Checklist check style (prettier than default checkbox) ====== */
+/* Checkbox dot style (fine to keep) */
 .peak-check {
   display: inline-block;
   width: 14px;
@@ -92,46 +89,8 @@
   opacity: 0.85;
 }
 
-/* ====== Leaflet dark controls ====== */
+/* Leaflet dark controls (fine to keep) */
 .leaflet-container .leaflet-control {
   background: transparent !important;
   box-shadow: none !important;
 }
-
-.leaflet-control-zoom {
-  border: 1px solid rgba(63, 63, 70, 0.6) !important;
-  border-radius: 12px !important;
-  overflow: hidden;
-  box-shadow: none !important;
-  backdrop-filter: blur(10px);
-  background: rgba(9, 9, 11, 0.55) !important;
-}
-.leaflet-control-zoom a {
-  background: rgba(9, 9, 11, 0.65) !important;
-  color: rgba(244, 244, 245, 0.95) !important;
-  border-bottom: 1px solid rgba(63, 63, 70, 0.6) !important;
-}
-.leaflet-control-zoom a:last-child { border-bottom: none !important; }
-.leaflet-control-zoom a:hover { background: rgba(255, 255, 255, 0.08) !important; }
-
-/* Reset button (dark theme) */
-.leaflet-container .leaflet-control-reset a {
-  background: rgba(9, 9, 11, 0.65) !important;
-  color: rgba(244, 244, 245, 0.95) !important;
-  text-decoration: none !important;
-  font-size: 16px;
-  line-height: 26px;
-}
-.leaflet-container .leaflet-control-reset a:hover {
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.leaflet-control-attribution {
-  background: rgba(9, 9, 11, 0.55) !important;
-  color: rgba(244, 244, 245, 0.75) !important;
-  border: 1px solid rgba(63, 63, 70, 0.5);
-  border-radius: 10px;
-  padding: 3px 8px;
-  backdrop-filter: blur(10px);
-}
-.leaflet-control-attribution a { color: rgba(244, 244, 245, 0.85) !important; }
