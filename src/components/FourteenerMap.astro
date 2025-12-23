@@ -1,6 +1,10 @@
 ---
+const astroBase = Astro.base ?? "/";
+const basePath = astroBase === "/" ? "" : astroBase.replace(/\/$/, "");
+const defaultCoDataUrl = `${basePath}/data/co-14ers.json`;
+
 const {
-  coDataUrl = "/data/co-14ers.json",
+  coDataUrl = defaultCoDataUrl,
   mapId = "co14ersMap",
 } = Astro.props as {
   coDataUrl?: string;
