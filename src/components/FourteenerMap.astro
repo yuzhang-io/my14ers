@@ -106,16 +106,21 @@ const {
 
   /* Light base */
   .num-marker.light.notyet {
-    color: rgba(0,0,0,0.92);
-    border: 1.4px solid rgba(0,0,0,0.95);
-    background: rgba(0,0,0,0.10);
-    opacity: 0.9;
+    color: rgba(244,244,245,0.92);
+    border: 1.4px solid rgba(12,12,12,0.95);
+    background: rgba(5,5,5,0.70);
+    opacity: 0.95;
+    box-shadow:
+      inset 0 0 0 1px rgba(255,255,255,0.05),
+      0 0 4px rgba(0,0,0,0.35);
   }
   .num-marker.light.climbed {
-    color: rgba(255,255,255,0.92);
+    color: rgba(245,255,248,0.92);
     border: 1.4px solid rgba(0,0,0,0.95);
-    background: #0b3b2e;
-    box-shadow: 0 0 10px rgba(0,0,0,0.18);
+    background: rgba(0,163,105,0.95);
+    box-shadow:
+      0 0 12px rgba(0,163,105,0.45),
+      0 0 18px rgba(0,0,0,0.33);
   }
 
   .num-marker:hover {
@@ -246,10 +251,7 @@ const {
       var isExportingSnapshot = false;
 
       var MAPBOX_STYLE_DARK = "zhangyutyn/cmjeroj9p001x01s1g91zapo2";
-      var MAPBOX_STYLE_LIGHT = "mapbox/light-v11";
-      var ARCGIS_RELIEF_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/export";
-      var ARCGIS_HILLSHADE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/export";
-      var ARCGIS_LABELS_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Terrain_Reference/MapServer/export";
+      var MAPBOX_STYLE_LIGHT = "zhangyutyn/cmjito95u000c01qq9iqxcv9y";
 
       function $(id) { return document.getElementById(id); }
 
@@ -517,31 +519,27 @@ const {
               zoomDelta: 0.2,
             });
 
-            var mapboxStyleTiles =
+            var darkTiles =
               "https://api.mapbox.com/styles/v1/" + mapboxStyleForBase("dark") + "/tiles/256/{z}/{x}/{y}@2x?access_token=" +
               MAPBOX_TOKEN;
 
-            var dark = window.L.tileLayer(mapboxStyleTiles, {
+            var dark = window.L.tileLayer(darkTiles, {
               maxZoom: 20,
               tileSize: 256,
               zoomOffset: 0,
               attribution: "&copy; Mapbox",
             });
 
-            var relief = window.L.tileLayer(
-              "https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",
-              { maxZoom: 13, attribution: "Tiles &copy; Esri" }
-            );
+            var lightTiles =
+              "https://api.mapbox.com/styles/v1/" + mapboxStyleForBase("light") + "/tiles/256/{z}/{x}/{y}@2x?access_token=" +
+              MAPBOX_TOKEN;
 
-            var hillshade = window.L.tileLayer(
-              "https://server.arcgisonline.com/ArcGIS/rest/services/Elevation/World_Hillshade/MapServer/tile/{z}/{y}/{x}",
-              { maxZoom: 16, opacity: 0.35, className: "hillshade-tile", attribution: "Tiles &copy; Esri" }
-            );
-
-            var lightLabels = window.L.tileLayer(
-              "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Terrain_Reference/MapServer/tile/{z}/{y}/{x}",
-              { maxZoom: 13, opacity: 0.55, attribution: "Tiles &copy; Esri" }
-            );
+            var light = window.L.tileLayer(lightTiles, {
+              maxZoom: 20,
+              tileSize: 256,
+              zoomOffset: 0,
+              attribution: "&copy; Mapbox",
+            });
 
             dark.addTo(map);
 
@@ -676,14 +674,10 @@ const {
               currentBase = mode;
 
               if (map.hasLayer(dark)) map.removeLayer(dark);
-              if (map.hasLayer(relief)) map.removeLayer(relief);
-              if (map.hasLayer(hillshade)) map.removeLayer(hillshade);
-              if (map.hasLayer(lightLabels)) map.removeLayer(lightLabels);
+              if (map.hasLayer(light)) map.removeLayer(light);
 
               if (mode === "light") {
-                relief.addTo(map);
-                hillshade.addTo(map);
-                lightLabels.addTo(map);
+                light.addTo(map);
               } else {
                 dark.addTo(map);
               }
@@ -945,18 +939,13 @@ const {
               var center = exportView.center;
               var zoom = exportView.zoom;
 
-              var mapSource;
-              if (currentBase === "light") {
-                mapSource = await loadArcGISScene(exportView, mapSize);
-              } else {
-                var staticUrl =
-                  "https://api.mapbox.com/styles/v1/" + mapboxStyleForBase(currentBase) + "/static/" +
-                  center.lng + "," + center.lat + "," + zoom + ",0/" +
-                  mapSize + "x" + mapSize +
-                  "?access_token=" + MAPBOX_TOKEN +
-                  "&logo=false&attribution=false";
-                mapSource = await loadImage(staticUrl);
-              }
+              var staticUrl =
+                "https://api.mapbox.com/styles/v1/" + mapboxStyleForBase(currentBase) + "/static/" +
+                center.lng + "," + center.lat + "," + zoom + ",0/" +
+                mapSize + "x" + mapSize +
+                "?access_token=" + MAPBOX_TOKEN +
+                "&logo=false&attribution=false";
+              var mapSource = await loadImage(staticUrl);
 
               var canvas = document.createElement("canvas");
               canvas.width = W;
@@ -1120,7 +1109,7 @@ const {
                     roundRect(ctx, cx, cy, colW, tileH, 12, false, true);
 
                     var centerY = cy + tileH / 2;
-                    drawMiniNum(ctx, cx + 12, centerY, itR.number, itR.climbed, 9);
+                    drawMiniNum(ctx, cx + 12, centerY, itR.number, itR.climbed, 9, currentBase);
 
                     var nm = shortName(itR.name);
                     ctx.fillStyle = itR.climbed ? "rgba(200,255,248,0.96)" : "rgba(244,244,245,0.90)";
@@ -1172,51 +1161,6 @@ const {
               });
             }
 
-            function bboxForExportView(exportView, size) {
-              var crs = map.options.crs;
-              var z = exportView.zoom;
-              var centerPoint = crs.latLngToPoint(exportView.center, z);
-              var half = size / 2;
-              var topLeftPoint = window.L.point(centerPoint.x - half, centerPoint.y - half);
-              var bottomRightPoint = window.L.point(centerPoint.x + half, centerPoint.y + half);
-              var topLeftLatLng = crs.pointToLatLng(topLeftPoint, z);
-              var bottomRightLatLng = crs.pointToLatLng(bottomRightPoint, z);
-              var minX = Math.min(topLeftLatLng.lng, bottomRightLatLng.lng);
-              var maxX = Math.max(topLeftLatLng.lng, bottomRightLatLng.lng);
-              var minY = Math.min(bottomRightLatLng.lat, topLeftLatLng.lat);
-              var maxY = Math.max(bottomRightLatLng.lat, topLeftLatLng.lat);
-              return minX + "," + minY + "," + maxX + "," + maxY;
-            }
-
-            function arcgisExportUrl(serviceUrl, bbox, size, transparent) {
-              return (
-                serviceUrl +
-                "?bbox=" + bbox +
-                "&bboxSR=4326&imageSR=4326" +
-                "&size=" + size + "," + size +
-                "&dpi=96&format=png32" +
-                "&transparent=" + (transparent ? "true" : "false")
-              );
-            }
-
-            async function loadArcGISScene(exportView, size) {
-              var bbox = bboxForExportView(exportView, size);
-              var baseImg = await loadImage(arcgisExportUrl(ARCGIS_RELIEF_URL, bbox, size, false));
-              var hillshadeImg = await loadImage(arcgisExportUrl(ARCGIS_HILLSHADE_URL, bbox, size, true));
-              var labelsImg = await loadImage(arcgisExportUrl(ARCGIS_LABELS_URL, bbox, size, true));
-
-              var canvas = document.createElement("canvas");
-              canvas.width = size;
-              canvas.height = size;
-              var ctx = canvas.getContext("2d");
-              ctx.drawImage(baseImg, 0, 0, size, size);
-              ctx.globalAlpha = 0.35;
-              ctx.drawImage(hillshadeImg, 0, 0, size, size);
-              ctx.globalAlpha = 1;
-              ctx.drawImage(labelsImg, 0, 0, size, size);
-              return canvas;
-            }
-
             function ellipsis(ctx, text, maxW) {
               if (ctx.measureText(text).width <= maxW) return text;
               var t = text;
@@ -1242,24 +1186,43 @@ const {
               roundRect(ctx, x, y, w, h, r, false, true);
             }
 
-            function drawMiniNum(ctx, cx, cy, number, climbed, r) {
+            function drawMiniNum(ctx, cx, cy, number, climbed, r, base) {
+              base = base || "dark";
               ctx.save();
               ctx.beginPath();
               ctx.arc(cx, cy, r, 0, Math.PI*2);
               if (climbed) {
-                ctx.fillStyle = "rgba(0,255,213,0.20)";
-                ctx.fill();
-                ctx.strokeStyle = "rgba(0,255,213,0.40)";
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = "rgba(200,255,248,0.96)";
+                if (base === "light") {
+                  ctx.fillStyle = "rgba(0,163,105,0.20)";
+                  ctx.fill();
+                  ctx.strokeStyle = "rgba(0,0,0,0.95)";
+                  ctx.lineWidth = 2;
+                  ctx.stroke();
+                  ctx.fillStyle = "rgba(245,255,248,0.96)";
+                } else {
+                  ctx.fillStyle = "rgba(0,255,213,0.20)";
+                  ctx.fill();
+                  ctx.strokeStyle = "rgba(0,255,213,0.40)";
+                  ctx.lineWidth = 2;
+                  ctx.stroke();
+                  ctx.fillStyle = "rgba(200,255,248,0.96)";
+                }
               } else {
-                ctx.fillStyle = "rgba(0,0,0,0.28)";
-                ctx.fill();
-                ctx.strokeStyle = "rgba(226,232,240,0.70)";
-                ctx.lineWidth = 2;
-                ctx.stroke();
-                ctx.fillStyle = "rgba(244,244,245,0.92)";
+                if (base === "light") {
+                  ctx.fillStyle = "rgba(5,5,5,0.85)";
+                  ctx.fill();
+                  ctx.strokeStyle = "rgba(0,0,0,0.95)";
+                  ctx.lineWidth = 2;
+                  ctx.stroke();
+                  ctx.fillStyle = "rgba(244,244,245,0.92)";
+                } else {
+                  ctx.fillStyle = "rgba(0,0,0,0.28)";
+                  ctx.fill();
+                  ctx.strokeStyle = "rgba(226,232,240,0.70)";
+                  ctx.lineWidth = 2;
+                  ctx.stroke();
+                  ctx.fillStyle = "rgba(244,244,245,0.92)";
+                }
               }
               ctx.font = "900 11px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";
               ctx.textAlign = "center";
@@ -1277,27 +1240,51 @@ const {
               ctx.arc(x, y, r, 0, Math.PI*2);
 
               if (climbed) {
-                ctx.fillStyle = "rgba(0,255,213,0.95)";
-                ctx.fill();
-                ctx.lineWidth = strokeW;
-                ctx.strokeStyle = "rgba(255,255,255,0.95)";
-                ctx.stroke();
+                if (currentBase === "light") {
+                  ctx.fillStyle = "rgba(0,163,105,0.95)";
+                  ctx.fill();
+                  ctx.lineWidth = strokeW;
+                  ctx.strokeStyle = "rgba(0,0,0,0.95)";
+                  ctx.stroke();
+                  ctx.shadowColor = "rgba(0,0,0,0.25)";
+                  ctx.shadowBlur = 10 * scale;
+                  ctx.beginPath();
+                  ctx.arc(x, y, r, 0, Math.PI*2);
+                  ctx.stroke();
+                  ctx.shadowBlur = 0;
+                  ctx.fillStyle = "rgba(255,255,255,0.92)";
+                } else {
+                  ctx.fillStyle = "rgba(0,255,213,0.95)";
+                  ctx.fill();
+                  ctx.lineWidth = strokeW;
+                  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+                  ctx.stroke();
 
-                ctx.shadowColor = "rgba(0,255,213,0.30)";
-                ctx.shadowBlur = 10 * scale;
-                ctx.beginPath();
-                ctx.arc(x, y, r, 0, Math.PI*2);
-                ctx.stroke();
-                ctx.shadowBlur = 0;
+                  ctx.shadowColor = "rgba(0,255,213,0.30)";
+                  ctx.shadowBlur = 10 * scale;
+                  ctx.beginPath();
+                  ctx.arc(x, y, r, 0, Math.PI*2);
+                  ctx.stroke();
+                  ctx.shadowBlur = 0;
 
-                ctx.fillStyle = "rgba(0,0,0,0.92)";
+                  ctx.fillStyle = "rgba(0,0,0,0.92)";
+                }
               } else {
-                ctx.fillStyle = "rgba(0,0,0,0.28)";
-                ctx.fill();
-                ctx.lineWidth = strokeW;
-                ctx.strokeStyle = "rgba(226,232,240,0.80)";
-                ctx.stroke();
-                ctx.fillStyle = "rgba(244,244,245,0.92)";
+                if (currentBase === "light") {
+                  ctx.fillStyle = "rgba(10,10,10,0.80)";
+                  ctx.fill();
+                  ctx.lineWidth = strokeW;
+                  ctx.strokeStyle = "rgba(0,0,0,0.95)";
+                  ctx.stroke();
+                  ctx.fillStyle = "rgba(244,244,245,0.92)";
+                } else {
+                  ctx.fillStyle = "rgba(0,0,0,0.28)";
+                  ctx.fill();
+                  ctx.lineWidth = strokeW;
+                  ctx.strokeStyle = "rgba(226,232,240,0.80)";
+                  ctx.stroke();
+                  ctx.fillStyle = "rgba(244,244,245,0.92)";
+                }
               }
 
               ctx.font = (10 * scale) + "px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto";

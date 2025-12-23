@@ -21,6 +21,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Run Astro checks
+        run: npm run astro check
+
       - name: Install, build, upload
         uses: withastro/action@v3
 
