@@ -282,22 +282,26 @@ import "../styles/global.css";
             return "col2";
           }
 
-          function groupRank(range) {
-            var g = columnGroupForRange(range);
-            if (g === "col1") return 1;
-            if (g === "col2") return 2;
-            if (g === "col3") return 3;
-            return 9;
+          function rangePriority(range) {
+            var r = (range || "").toLowerCase();
+            if (r.indexOf("front") !== -1) return 1;
+            if (r.indexOf("sangre") !== -1) return 2;
+            if (r.indexOf("mosquito") !== -1) return 3;
+            if (r.indexOf("sawatch") !== -1) return 4;
+            if (r.indexOf("elk") !== -1) return 5;
+            if (r.indexOf("san juan") !== -1) return 6;
+            return 99;
           }
 
-          // Numbering: left column first, then middle, then right.
+          // Numbering: order by range priority, then rank/name.
           function assignNumbersLeftToRight(listData) {
             var copy = listData.slice();
             copy.sort(function (a, b) {
-              var ga = groupRank(a.range), gb = groupRank(b.range);
-              if (ga !== gb) return ga - gb;
-              if (a.lon !== b.lon) return a.lon - b.lon;      // west->east
-              if (a.lat !== b.lat) return b.lat - a.lat;      // north->south
+              var pa = rangePriority(a.range), pb = rangePriority(b.range);
+              if (pa !== pb) return pa - pb;
+              var ra = (a.pk && typeof a.pk.rank === "number") ? a.pk.rank : Number.MAX_SAFE_INTEGER;
+              var rb = (b.pk && typeof b.pk.rank === "number") ? b.pk.rank : Number.MAX_SAFE_INTEGER;
+              if (ra !== rb) return ra - rb;
               return (a.name || "").localeCompare(b.name || "");
             });
             for (var i = 0; i < copy.length; i++) copy[i].number = i + 1;
